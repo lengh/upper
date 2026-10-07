@@ -477,19 +477,22 @@ func (a *App) onReady() {
 	a.ready = true
 	// A fresh session forgets subscriptions; re-subscribe recent ones.
 	a.gw.Subscribe(a.subscribed)
-	a.side.restoreCollapsed(a.saved.Collapsed)
-	switch {
-	case a.current != 0:
+	if first {
+		// Every launch starts closed: servers folded, no channel open,
+		// just the overview. Where you were is one Alt+/ away.
+		for _, g := range a.st.Guilds() {
+			a.side.collapsed[g.ID] = true
+		}
+		if _, ok := a.st.Channel(a.saved.LastChannel); ok {
+			a.previous = a.saved.LastChannel
+		}
+	}
+	if a.current != 0 {
 		if _, ok := a.st.Channel(a.current); !ok {
 			a.current = 0
 			a.view.setChannel(0)
 		} else {
 			a.loadHistory(a.current)
-		}
-	case first && a.saved.LastChannel != 0:
-		if _, ok := a.st.Channel(a.saved.LastChannel); ok {
-			a.open(a.saved.LastChannel)
-			a.previous = a.saved.PrevChannel
 		}
 	}
 	a.view.reload()
@@ -898,7 +901,6 @@ func (a *App) persist() {
 			a.drafts[a.current] = text
 		}
 	}
-	a.saved.Collapsed = a.side.collapsedIDs()
 	a.saved.Drafts = a.drafts
 	saveUIState(a.saved)
 }

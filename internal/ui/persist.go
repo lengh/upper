@@ -9,11 +9,10 @@ import (
 )
 
 // uiState is what upper remembers between runs, so it reopens where you
-// left off: the channel, folded servers, unsent drafts.
+// left off: the last channel (for Alt+/) and unsent drafts.
 type uiState struct {
 	LastChannel Snowflake            `json:"last_channel,omitempty"`
 	PrevChannel Snowflake            `json:"prev_channel,omitempty"`
-	Collapsed   []Snowflake          `json:"collapsed,omitempty"`
 	Sidebar     *bool                `json:"sidebar,omitempty"`
 	Drafts      map[Snowflake]string `json:"drafts,omitempty"`
 }

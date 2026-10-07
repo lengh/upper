@@ -101,8 +101,10 @@ the stored copy.
 
 The sidebar is an inbox. **Direct messages** lists only conversations with
 something new, plus the one that's open; every other DM is a `Ctrl+K` away.
-**Servers** are all expanded, with their channels in Discord's order (fold
-one with `←`, and that's remembered). When there's more unread than fits on
+**Servers** list their channels in Discord's order. Every launch starts
+closed: servers folded and no channel open, just an overview of what's
+waiting under a cat grooming its paw. `Alt+/` returns to where you left off,
+and `→`/`Enter` unfolds a server. When there's more unread than fits on
 screen, a channel opens at the first unread message so you read in order.
 Below 64 columns, the conversation gets the whole width (`Ctrl+B` brings the
 sidebar back).
@@ -196,7 +198,7 @@ The layout follows two decades of IRC clients that people spend all day in
 - **Respect attention.** Channels are marked read only while the terminal
   window has focus and you're at the bottom. Scrolling back to read history
   doesn't silently mark things read.
-- **Nothing is lost.** Unsent drafts, the open channel and expanded servers
+- **Nothing is lost.** Unsent drafts and your last channel (`Alt+/`)
   survive restarts (`~/.local/state/upper`). Failed sends stay in place for
   a one-key retry.
 - **Graceful everywhere.** It degrades to 80×24 and smaller (timestamps go

@@ -734,16 +734,11 @@ func restyle(l line, f func(tcell.Style) tcell.Style) line {
 	return out
 }
 
-// drawWelcome is the empty state: a logo while connecting, then a summary
-// of what's waiting and the handful of keys worth knowing.
+// drawWelcome is the empty state: the cat, and under it what's waiting
+// and the few keys worth knowing. On short terminals the tips go first,
+// then the cat, so the summary always fits.
 func (v *msgView) drawWelcome(scr tcell.Screen, x, y, w, h int) {
 	a, th := v.a, v.a.th
-	logo := []string{
-		` _  _ _ __ _ __  ___ _ _ `,
-		`| || | '_ \ '_ \/ -_) '_|`,
-		` \_,_| .__/ .__/\___|_|  `,
-		`     |_|  |_|            `,
-	}
 	var body []line
 	if !a.ready {
 		body = append(body, line{{text: spinner[a.spin%len(spinner)] + " " + a.conn.message, style: th.muted()}})
@@ -775,31 +770,34 @@ func (v *msgView) drawWelcome(scr tcell.Screen, x, y, w, h int) {
 				body = append(body, l)
 			}
 		}
-		body = append(body, nil)
+	}
+	var tips []line
+	if a.ready {
+		tips = append(tips, nil)
 		for _, kv := range [][2]string{
 			{"Ctrl+K", "jump to any channel or DM"},
 			{"Alt+A ", "go to the next unread conversation"},
-			{"Alt+/ ", "flip back to the previous channel"},
+			{"Alt+/ ", "back to where you were"},
 			{"F1    ", "every key and command"},
 		} {
-			body = append(body, line{{text: kv[0] + "  ", style: th.fg(th.Text).Bold(true)}, {text: kv[1], style: th.muted()}})
+			tips = append(tips, line{{text: kv[0] + "  ", style: th.fg(th.Text).Bold(true)}, {text: kv[1], style: th.muted()}})
 		}
 	}
 
-	total := len(logo) + 2 + len(body)
+	catH := len(catTemplate) + 2 // plus breathing room below
+	showCat := h >= catH+len(body) && w/2 >= catCenter+1 && w/2+catWidth-catCenter <= w
+	if !showCat || h < catH+len(body)+len(tips) {
+		tips = nil
+	}
+	body = append(body, tips...)
+	total := len(body)
+	if showCat {
+		total += catH
+	}
 	top := y + max(0, (h-total)/2)
-	lw := textWidth(logo[0])
-	for i, l := range logo {
-		lx := x + max(0, (w-lw)/2)
-		for j, r := range l {
-			st := th.accent().Bold(true)
-			if !th.mono {
-				st = th.fg(blend(th.Accent, th.Link, float64(j)/float64(lw)))
-			}
-			if lx+j < x+w {
-				scr.SetContent(lx+j, top+i, r, nil, st)
-			}
-		}
+	if showCat {
+		drawCat(scr, th, x+w/2-catCenter, top, a.spin, w, h)
+		top += catH
 	}
 	bw := 0
 	for _, l := range body {
@@ -807,10 +805,10 @@ func (v *msgView) drawWelcome(scr tcell.Screen, x, y, w, h int) {
 	}
 	bx := x + max(1, (w-bw)/2)
 	for i, l := range body {
-		if top+len(logo)+2+i >= y+h {
+		if top+i >= y+h {
 			break
 		}
-		drawLine(scr, bx, top+len(logo)+2+i, w-(bx-x), l, true, nil)
+		drawLine(scr, bx, top+i, w-(bx-x), l, true, nil)
 	}
 }
 

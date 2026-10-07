@@ -232,3 +232,24 @@ func TestHintKeysUnique(t *testing.T) {
 		t.Fatal("hint keys must cover the alphabet, home row first")
 	}
 }
+
+func TestCatIsPlainASCIIAndStable(t *testing.T) {
+	first := strings.Split(catText(0), "\n")
+	for tick := 0; tick < 24; tick++ {
+		frame := catText(tick)
+		for _, r := range frame {
+			if r > 0x7e || r < 0x20 && r != '\n' {
+				t.Fatalf("tick %d: non-ASCII %q would not render everywhere", tick, r)
+			}
+		}
+		lines := strings.Split(frame, "\n")
+		for i := range lines {
+			if len(lines[i]) != len(first[i]) {
+				t.Fatalf("tick %d line %d changes width; the animation would jitter", tick, i)
+			}
+		}
+	}
+	if catCenter <= 0 {
+		t.Fatal("nose marker missing")
+	}
+}

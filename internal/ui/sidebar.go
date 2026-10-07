@@ -55,22 +55,6 @@ func newSidebar(a *App) *sidebar {
 
 func (s *sidebar) expanded(guild Snowflake) bool { return !s.collapsed[guild] }
 
-func (s *sidebar) restoreCollapsed(ids []Snowflake) {
-	for _, id := range ids {
-		s.collapsed[id] = true
-	}
-}
-
-func (s *sidebar) collapsedIDs() []Snowflake {
-	var out []Snowflake
-	for id, ok := range s.collapsed {
-		if ok {
-			out = append(out, id)
-		}
-	}
-	return out
-}
-
 func (s *sidebar) refresh() {
 	a := s.a
 	var keep Snowflake
