@@ -55,6 +55,9 @@ curl -fsSL https://lengh.github.io/upper/install.sh | sh
 
 The installer picks the right build (x86-64 or ARM64), verifies its SHA-256
 checksum, installs it to `~/.local/bin` and adds that to your PATH if needed.
+Running it again is safe: it finds your existing install (wherever it is on
+your PATH), reports *Up to date* if you already have the newest build, and
+otherwise updates that copy in place.
 
 **Updates are automatic.** Every launch checks for a newer build (quickly:
 it gives up after 3 seconds if you're offline). If there is one, upper
