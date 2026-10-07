@@ -5,19 +5,36 @@ It does text chat only: servers, channels, threads you've joined and direct
 messages. There are no voice calls, images or file uploads.
 
 ```
-┌ servers ───────────────┐ Test Server › #general  Say hi
-│▾ Direct Messages (1)   │┌──────────────────────────────────────────────────┐
-│  @ Alice (1)           ││ ──── Wednesday, 7 October 2026 ────              │
-│▾ Test Server (2)       ││ 13:28 Alice (mod) ▌live message 1, ping @Me      │
-│  TEXT                  ││   ╭─ Alice (mod): live message 1, ping @Me       │
-│  # general (2)         ││ 13:28 Me thanks alice                            │
-│  # random              ││ 13:29 Alice (mod) welcome to the upper demo!     │
-│                        │└──────────────────────────────────────────────────┘
-│                        │ Alice (mod) is typing…
-│                        │╔══════════════════════════════════════════════════╗
-│                        │║ Message #general — Enter send · Ctrl+J newline   ║
-└────────────────────────┘╚══════════════════════════════════════════════════╝
- upper connected  Ctrl+K switch · Alt+U next unread · Tab focus · F1 help
+ # general  Everything Go · be kind · no recruiters                                                Gophers  ●
+ DIRECT MESSAGES           │ 11:31  bobby │ anyone else still on 1.22? thinking about bumping the toolchain
+• ◐ Bob                 1  │ 11:33  Alice │ we moved to 1.24 last week, iterators alone were worth it
+  ● Alice                  │ 12:31      → │ dave joined the server
+  ◇ weekend plans          │ 12:32   dave │ hi all 👋 found this place through the meetup
+                           │ 12:33  Carol │ welcome dave! grab a sticker from #welcome
+ SERVERS                   │ ──────────────────────────────────── Today ─────────────────────────────────────
+ ▾ Gophers                 │ 11:31    You │ morning! did anyone figure out the flaky CI job?
+   TEXT                    │ 11:32  bobby │ it's the race in the cache warmer. repro:
+   » welcome               │ 11:33  bobby │  for i := range workers {
+▌  # general               │              │      go warm(cache, i) // shares buf!
+     ↳ release-planning    │              │  }
+   # help                  │ 11:33  Alice │ oh nice catch. go test -race flags it immediately too
+   # off-topic             │              │  🎯 3   👀 1
+ ▸ Synthwave Café        • │
+                           │              │ ╭─ Alice oh nice catch. go test -race flags it immediately too
+                           │ 11:34    You │ I'll send a patch after lunch (edited)
+                           │ 12:31  Carol │ related reading for anyone curious:
+                           │              │ ▍ go.dev
+                           │              │ ▍ Data Race Detector
+                           │              │ ▍ Data races are among the most common and hardest to debug types
+                           │              │ ▍ of bugs in concurrent systems.
+                           │ 12:32   dave │ thanks, reading now
+                           │ ────────────────────────────────────────────────────────────────────────── new ─
+                           │ 14:06  Alice ┃ @You patch looks good, approved ✅ merging when CI is green
+                           │ 14:11  bobby │ release notes are drafted in the thread, please skim them before
+                           │              │ friday ░░░░░░░░░░░░░░░
+                           │              │  🚀 4
+ 14:31 │ 1:Bob(1)  2:#lounge
+ ❯ Message #general
 ```
 
 > [!WARNING]
@@ -67,31 +84,95 @@ the stored copy.
 
 ## Using it
 
+The composer is home. Every jump takes you somewhere and puts you straight
+back in the composer, so the usual loop is: read, `Alt+A` to the next
+conversation, type, `Enter`.
+
+**Getting around**
+
 | Key | Action |
 | --- | --- |
-| `Ctrl+K` | Fuzzy-search every channel and DM, with unread ones first |
-| `Alt+U` | Jump to the next unread channel (mentions first) |
-| `Alt+↑` / `Alt+↓` | Previous / next channel in the sidebar |
-| `Tab` / `Shift+Tab` | Move focus between sidebar → messages → composer |
-| `Enter` | Send (in the composer) · open (in the sidebar) |
-| `Ctrl+J` or `Alt+Enter` | New line in the composer |
+| `Ctrl+K` | Fuzzy-search every channel and DM (matched letters are highlighted) |
+| `Alt+A` | Next conversation with activity: mentions and DMs first |
+| `Alt+1` … `Alt+9` | Open an item from the numbered activity list in the status bar |
+| `Alt+/` | Flip back to the previous channel |
+| `Alt+↑` / `Alt+↓`, `Ctrl+P` / `Ctrl+N` | Previous / next channel in the sidebar |
+| `Tab` (empty composer) | Focus the sidebar, then the messages |
+| `Ctrl+B` | Hide or show the sidebar |
+
+**Writing**
+
+| Key | Action |
+| --- | --- |
+| `Enter` / `Ctrl+J` | Send / new line (`Alt+Enter` and `Shift+Enter` also add a new line) |
+| `Tab`, `Shift+Tab` | Complete `@names` (recent speakers first), `#channels`, `:emoji:` and `/commands` |
 | `↑` (empty composer) | Edit your last message |
-| `PgUp` | Browse messages: `↑↓`/`jk` select, `r` reply, `e` edit, `d` delete, `y` copy, `g`/`G` oldest/newest |
-| `Esc` | Cancel a reply or edit, or go back |
-| `Ctrl+B` | Hide/show the sidebar |
-| `F1` | Help |
-| `Ctrl+C` / `Ctrl+Q` | Quit |
+| `s/old/new` | Fix your last message, like the official client |
+| `+:emoji:` | React to the last message |
+| `Esc` | Cancel a reply, edit or completion; otherwise jump back to the present |
 
-Scrolling past the top of a channel, with the keyboard or the mouse wheel,
-loads older history. Multi-line pastes land in the composer as one message.
-Messages longer than 2000 characters are split at line or word boundaries.
+`@Name` and `#channel` turn into real mentions when sent, and `:shortcodes:`
+into emoji. Code spans are left untouched. Drafts are kept per channel, even
+across restarts. The prompt always shows what `Enter` will do: `❯` send,
+`↪ Alice ❯` reply, `✎ edit ❯`, `☺ react ❯` or `cmd ❯`.
 
-**Commands:** `/dm <user> [text]` opens a DM with a friend, `/read` marks
-everything read, `/sidebar`, `/logout` and `/quit`. Start a message with
-`//` to send a literal `/`.
+**Reading**
 
-Attachments, stickers and embeds appear as short text placeholders such as
-`[attachment: notes.pdf]`, so you can tell something was shared.
+| Key | Action |
+| --- | --- |
+| `PgUp` / `PgDn`, mouse wheel | Scroll. The view holds still while new messages arrive and counts them |
+| `Alt+U` | Scroll to the first unread message |
+| `Alt+N` / `Alt+P` | Next / previous message that mentions you |
+| `Alt+<` / `Alt+>` | Oldest / newest |
+
+**On a message** (`Ctrl+↑`, or click it): `↑↓`/`jk` move, `r` or `Enter`
+reply, `e` edit, `d` delete (asks first), `a` react, `y` copy, `o` open the
+link in your Windows browser, and `Esc` returns to the composer.
+
+**Commands:** `/dm <user> [text]`, `/me`, `/shrug`, `/tableflip`, `/unflip`,
+`/react`, `/edit`, `/open`, `/read [all]`, `/topic`, `/theme dark|light|mono`,
+`/time`, `/sidebar`, `/logout` and `/quit`. While you type a command, the
+status bar shows its usage. Start a message with `//` to send a literal `/`.
+
+`F1` shows every key. `Ctrl+C` clears the composer, and pressing it twice
+quits. This avoids accidents, since Windows makes Ctrl+C a copy reflex.
+
+## Design notes
+
+The layout follows two decades of IRC clients that people spend all day in
+(WeeChat, irssi, catgirl, senpai), adapted to Discord:
+
+- **Quiet chrome.** One title bar, one status bar, a single rule between
+  the sidebar and the messages. There are no boxes around panes: borders
+  cost space and attention, and the content is what matters.
+- **The timeline.** Names are right-aligned against a vertical rule and long
+  messages wrap with a hanging indent, so the text column stays straight and
+  scannable. Follow-ups from the same person dim the name instead of hiding
+  it, so every message stays attributable. Times appear only when they
+  change. Days are separated, and a red `new` rule marks where you stopped
+  reading. If you switch to another window, that marker moves, so whatever
+  arrived while you were away is easy to find.
+- **Colour has a job.** Each person gets a stable colour derived from their
+  user ID, so it survives name changes (as in catgirl). Discord role colours
+  win, but they're lightened or darkened until they're readable on your
+  background. Orange always means *you* (mentions, highlighted messages), the
+  accent always means *where you are*, and dim means *safe to ignore*. Muted
+  channels fade away.
+- **The hotlist.** Like WeeChat's, it lives in the status bar and is
+  numbered for `Alt+1…9`, so you can see and reach what's waiting without
+  looking at the sidebar. The terminal tab title carries your mention count
+  (`(2) #general - upper`), and mentions ring the bell (Windows Terminal
+  flashes the taskbar). That only happens when you're not already looking.
+- **Respect attention.** Channels are marked read only while the terminal
+  window has focus and you're at the bottom. Scrolling back to read history
+  doesn't silently mark things read.
+- **Nothing is lost.** Unsent drafts, the open channel and expanded servers
+  survive restarts (`~/.local/state/upper`). Failed sends stay in place for
+  a one-key retry.
+- **Graceful everywhere.** It degrades to 80×24 and smaller (timestamps go
+  first, then the sidebar narrows), honours `NO_COLOR` with a monochrome
+  theme, and has light and dark Catppuccin palettes. Everything works with
+  the keyboard alone, and the mouse works too.
 
 ## Configuration
 
@@ -104,16 +185,13 @@ default:
   "history_page": 50,
   "max_messages": 400,
   "max_channels": 64,
-  "sidebar_width": 32,
+  "sidebar_width": 28,
   "bell_on_mention": true,
   "send_typing": true,
   "mark_read": true,
   "mention_on_reply": true,
-  "theme": {
-    "border": "#5865f2", "accent": "#5865f2", "timestamp": "#72767d",
-    "muted": "#8e9297", "mention": "#faa61a", "unread": "#ffffff",
-    "selected": "#404249", "error": "#ed4245"
-  }
+  "theme": "dark",
+  "nick_width": 16
 }
 ```
 
@@ -123,6 +201,9 @@ default:
   Terminal this flashes the taskbar icon.
 - `mark_read` syncs read state with your other devices.
 - `send_typing` controls whether others see you typing.
+- `theme` is `dark`, `light` (for light terminal backgrounds) or `mono`.
+  Setting `NO_COLOR` forces `mono`.
+- `nick_width` caps the name column; longer names are shortened with `…`.
 
 ## WSL tips
 
@@ -164,7 +245,9 @@ very few dependencies and nothing hidden runs in the background.
   accounts that subscribe to them. upper subscribes to a server when you open
   one of its channels (keeping the 10 most recent), and uses Discord's
   lightweight unread updates for the rest.
-- **UI** (`internal/ui`): events only mark what changed. A render loop
+- **UI** (`internal/ui`): the conversation is a custom virtualized view.
+  Only the rows on screen are drawn, and wrapped layouts are cached per
+  message, so long histories cost nothing extra. Events only mark what changed. A render loop
   coalesces bursts into at most ~30 redraws per second (the sidebar at most
   4 per second), so a busy server never floods the terminal. Sent messages
   appear instantly as pending and are matched to Discord's echo by nonce. A

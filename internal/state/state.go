@@ -67,6 +67,8 @@ type State struct {
 
 	// Notification settings: muted guilds/channels (channel mutes may name a
 	// category, muting its children) and guilds suppressing @everyone.
+	presence map[Snowflake]string // friends' online status
+
 	mutedGuilds   map[Snowflake]bool
 	mutedChannels map[Snowflake]bool
 	noEveryone    map[Snowflake]bool
@@ -87,6 +89,7 @@ func (s *State) reset() {
 	s.friends = nil
 	s.reads = map[Snowflake]*readState{}
 	s.typing = map[Snowflake]map[Snowflake]time.Time{}
+	s.presence = map[Snowflake]string{}
 	s.mutedGuilds = map[Snowflake]bool{}
 	s.mutedChannels = map[Snowflake]bool{}
 	s.noEveryone = map[Snowflake]bool{}
@@ -257,6 +260,42 @@ func (s *State) Apply(ev discord.Event) (Change, error) {
 		rs.mentions = 0
 		c.Tree = true
 
+	case "PRESENCE_UPDATE":
+		var p discord.Presence
+		if err := json.Unmarshal(ev.Data, &p); err != nil {
+			return c, err
+		}
+		// Guild presences aren't shown; keep friends' and DM partners'.
+		if p.GuildID == 0 {
+			s.presence[p.User.ID] = p.Status
+			c.Tree = true
+		}
+
+	case "MESSAGE_REACTION_ADD", "MESSAGE_REACTION_REMOVE":
+		var r discord.ReactionEvent
+		if err := json.Unmarshal(ev.Data, &r); err != nil {
+			return c, err
+		}
+		if s.react(r, ev.Type == "MESSAGE_REACTION_ADD") {
+			c.Channel = r.ChannelID
+		}
+
+	case "MESSAGE_REACTION_REMOVE_ALL", "MESSAGE_REACTION_REMOVE_EMOJI":
+		var r discord.ReactionEvent
+		if err := json.Unmarshal(ev.Data, &r); err != nil {
+			return c, err
+		}
+		if m := s.findMessage(r.ChannelID, r.MessageID); m != nil {
+			if ev.Type == "MESSAGE_REACTION_REMOVE_ALL" {
+				m.Reactions = nil
+			} else {
+				m.Reactions = slices.DeleteFunc(m.Reactions, func(x discord.Reaction) bool {
+					return x.Emoji.Key() == r.Emoji.Key()
+				})
+			}
+			c.Channel = r.ChannelID
+		}
+
 	case "USER_GUILD_SETTINGS_UPDATE":
 		var gs discord.GuildSettings
 		if err := json.Unmarshal(ev.Data, &gs); err != nil {
@@ -311,6 +350,9 @@ func (s *State) loadReady(r *discord.Ready) {
 	}
 	for i := range r.PrivateChannels {
 		s.addChannel(r.PrivateChannels[i])
+	}
+	for _, p := range r.Presences {
+		s.presence[p.User.ID] = p.Status
 	}
 	for _, gs := range r.GuildSettings() {
 		s.applySettings(gs)
@@ -494,6 +536,9 @@ func (s *State) cacheAuthor(m *discord.Message) {
 		}
 	}
 	m.Member = nil
+	if r := m.ReferencedMessage; r != nil && r.GuildID == 0 {
+		r.GuildID = m.GuildID
+	}
 	for _, u := range m.Mentions {
 		if _, ok := s.users[u.ID]; !ok {
 			s.users[u.ID] = u
@@ -640,6 +685,50 @@ func (s *State) updateMessage(data json.RawMessage) Snowflake {
 	return u.ChannelID
 }
 
+func (s *State) findMessage(ch, id Snowflake) *discord.Message {
+	h := s.histories[ch]
+	if h == nil {
+		return nil
+	}
+	i := sort.Search(len(h.msgs), func(i int) bool { return h.msgs[i].ID >= id })
+	if i == len(h.msgs) || h.msgs[i].ID != id || h.msgs[i].Pending {
+		return nil
+	}
+	return &h.msgs[i]
+}
+
+func (s *State) react(r discord.ReactionEvent, add bool) bool {
+	m := s.findMessage(r.ChannelID, r.MessageID)
+	if m == nil {
+		return false
+	}
+	key := r.Emoji.Key()
+	mine := r.UserID == s.me.ID
+	for i := range m.Reactions {
+		x := &m.Reactions[i]
+		if x.Emoji.Key() != key {
+			continue
+		}
+		if add {
+			x.Count++
+			x.Me = x.Me || mine
+		} else {
+			x.Count--
+			if mine {
+				x.Me = false
+			}
+			if x.Count <= 0 {
+				m.Reactions = slices.Delete(m.Reactions, i, i+1)
+			}
+		}
+		return true
+	}
+	if add {
+		m.Reactions = append(m.Reactions, discord.Reaction{Emoji: r.Emoji, Count: 1, Me: mine})
+	}
+	return add
+}
+
 func (s *State) deleteMessages(ch Snowflake, ids ...Snowflake) bool {
 	h := s.histories[ch]
 	if h == nil {
@@ -667,6 +756,7 @@ type GuildInfo struct {
 	Unread   bool
 	Mentions int
 	Large    bool
+	Muted    bool
 }
 
 func (s *State) Guilds() []GuildInfo {
@@ -678,7 +768,7 @@ func (s *State) Guilds() []GuildInfo {
 		if g == nil || g.Unavailable {
 			continue
 		}
-		gi := GuildInfo{ID: id, Name: g.Name, Large: g.Large}
+		gi := GuildInfo{ID: id, Name: g.Name, Large: g.Large, Muted: s.mutedGuilds[id]}
 		for _, ch := range s.byGuild[id] {
 			if !ch.Type.IsText() || !s.canView(g, ch) {
 				continue
@@ -703,6 +793,8 @@ type ChannelInfo struct {
 	Unread   bool
 	Mentions int
 	Last     Snowflake
+	Muted    bool
+	Parent   Snowflake // parent channel of a thread
 }
 
 // GuildChannels lists the readable text channels of a guild in sidebar order:
@@ -748,7 +840,7 @@ func (s *State) GuildChannels(gid Snowflake) []ChannelInfo {
 		u, m := s.unread(ch)
 		out = append(out, ChannelInfo{
 			ID: ch.ID, GuildID: gid, Name: ch.Name, Category: cat, Type: ch.Type,
-			Depth: depth, Unread: u, Mentions: m, Last: ch.LastMessageID,
+			Depth: depth, Unread: u, Mentions: m, Last: ch.LastMessageID, Muted: s.muted(ch),
 		})
 		ts := threads[ch.ID]
 		slices.SortFunc(ts, func(a, b *discord.Channel) int {
@@ -762,6 +854,7 @@ func (s *State) GuildChannels(gid Snowflake) []ChannelInfo {
 			out = append(out, ChannelInfo{
 				ID: t.ID, GuildID: gid, Name: t.Name, Category: cat, Type: t.Type,
 				Depth: depth + 1, Unread: tu, Mentions: tm, Last: t.LastMessageID,
+				Muted: s.muted(t), Parent: ch.ID,
 			})
 		}
 	}
@@ -790,7 +883,7 @@ func (s *State) PrivateChannels() []ChannelInfo {
 		u, m := s.unread(ch)
 		out = append(out, ChannelInfo{
 			ID: ch.ID, Name: s.channelName(ch), Type: ch.Type,
-			Unread: u, Mentions: m, Last: ch.LastMessageID,
+			Unread: u, Mentions: m, Last: ch.LastMessageID, Muted: s.muted(ch),
 		})
 	}
 	slices.SortFunc(out, func(a, b ChannelInfo) int {
@@ -1106,7 +1199,10 @@ func (s *State) SetHistory(ch Snowflake, page []discord.Message, limit int) {
 	}
 	old := h.msgs
 	h.msgs = make([]discord.Message, 0, len(page)+8)
+	gid := s.guildOf(ch)
 	for i := len(page) - 1; i >= 0; i-- {
+		// REST history omits guild_id; nicknames and role colours need it.
+		page[i].GuildID = gid
 		s.cacheAuthor(&page[i])
 		h.msgs = append(h.msgs, page[i])
 	}
@@ -1134,10 +1230,12 @@ func (s *State) PrependHistory(ch Snowflake, page []discord.Message, limit int) 
 		return
 	}
 	older := make([]discord.Message, 0, len(page)+len(h.msgs))
+	gid := s.guildOf(ch)
 	for i := len(page) - 1; i >= 0; i-- {
 		if len(h.msgs) > 0 && page[i].ID >= h.msgs[0].ID {
 			continue
 		}
+		page[i].GuildID = gid
 		s.cacheAuthor(&page[i])
 		older = append(older, page[i])
 	}
@@ -1145,6 +1243,13 @@ func (s *State) PrependHistory(ch Snowflake, page []discord.Message, limit int) 
 	h.complete = len(page) < limit
 	// Scrolling back is user-driven, so allow the window to grow beyond
 	// MaxMessages while viewing; insert() trims it again on new messages.
+}
+
+func (s *State) guildOf(ch Snowflake) Snowflake {
+	if c := s.channels[ch]; c != nil {
+		return c.GuildID
+	}
+	return 0
 }
 
 // AddPending adds a locally sent message that hasn't been confirmed yet.
@@ -1278,4 +1383,115 @@ func (s *State) AllChannels() []ChannelInfo {
 		}
 	}
 	return out
+}
+
+// Presence returns a friend's status: online, idle, dnd or "" (offline or
+// unknown).
+func (s *State) Presence(user Snowflake) string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if st := s.presence[user]; st != "offline" && st != "invisible" {
+		return st
+	}
+	return ""
+}
+
+// DMRecipient returns the other user of a 1:1 DM.
+func (s *State) DMRecipient(ch Snowflake) (discord.User, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c := s.channels[ch]
+	if c == nil || c.Type != discord.ChannelDM || len(c.RecipientIDs) != 1 {
+		return discord.User{}, false
+	}
+	u, ok := s.users[c.RecipientIDs[0]]
+	return u, ok
+}
+
+// MemberRole returns a guild member's top coloured role colour (0 if none).
+func (s *State) MemberColor(guildID, user Snowflake) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.author(guildID, discord.User{ID: user}).Color
+}
+
+func (s *State) RoleColor(guildID, role Snowflake) int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if g := s.guilds[guildID]; g != nil {
+		return g.roles[role].Color
+	}
+	return 0
+}
+
+// Candidate is a mention completion candidate.
+type Candidate struct {
+	ID   Snowflake
+	Name string // display name as shown
+	Alt  string // username, also matched
+}
+
+// MentionCandidates lists people to complete in a channel: recent speakers
+// first (most recent first), then other known members or DM recipients.
+func (s *State) MentionCandidates(ch Snowflake) []Candidate {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c := s.channels[ch]
+	if c == nil {
+		return nil
+	}
+	seen := map[Snowflake]bool{s.me.ID: true}
+	var out []Candidate
+	add := func(u discord.User) {
+		if u.ID == 0 || seen[u.ID] {
+			return
+		}
+		seen[u.ID] = true
+		out = append(out, Candidate{ID: u.ID, Name: s.author(c.GuildID, u).Name, Alt: u.Username})
+	}
+	if h := s.histories[ch]; h != nil {
+		for i := len(h.msgs) - 1; i >= 0; i-- {
+			add(h.msgs[i].Author)
+		}
+	}
+	for _, id := range c.RecipientIDs {
+		add(s.users[id])
+	}
+	if g := s.guilds[c.GuildID]; g != nil {
+		for id := range g.members {
+			add(s.users[id])
+		}
+	}
+	return out
+}
+
+// ChannelCandidates lists the readable text channels of a channel's guild.
+func (s *State) ChannelCandidates(ch Snowflake) []Candidate {
+	s.mu.RLock()
+	c := s.channels[ch]
+	s.mu.RUnlock()
+	if c == nil || c.GuildID == 0 {
+		return nil
+	}
+	var out []Candidate
+	for _, info := range s.GuildChannels(c.GuildID) {
+		out = append(out, Candidate{ID: info.ID, Name: info.Name})
+	}
+	return out
+}
+
+// Muted reports whether a channel is muted (directly, via its category or
+// its guild).
+func (s *State) Muted(ch Snowflake) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	c := s.channels[ch]
+	return c != nil && s.muted(c)
+}
+
+// MentionsMe reports whether a message highlights the user.
+func (s *State) MentionsMe(m *discord.Message) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.mentionsMe(m)
 }

@@ -115,7 +115,9 @@ func (g *Gateway) Subscribe(guilds []Snowflake) {
 	}
 	subs := make(map[string]GuildSubscription, len(guilds))
 	for _, id := range guilds {
-		subs[id.String()] = GuildSubscription{Typing: true, Threads: true, Activities: true}
+		// Activities would stream presences of the whole member list,
+		// which upper doesn't show; typing and threads are enough.
+		subs[id.String()] = GuildSubscription{Typing: true, Threads: true}
 	}
 	g.Send(opGuildSubscription, map[string]any{"subscriptions": subs})
 }

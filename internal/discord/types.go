@@ -222,9 +222,24 @@ type Attachment struct {
 }
 
 type Embed struct {
+	Type        string `json:"type"`
 	Title       string `json:"title"`
 	Description string `json:"description"`
 	URL         string `json:"url"`
+	Color       int    `json:"color"`
+	Author      *struct {
+		Name string `json:"name"`
+	} `json:"author"`
+	Provider *struct {
+		Name string `json:"name"`
+	} `json:"provider"`
+	Fields []struct {
+		Name  string `json:"name"`
+		Value string `json:"value"`
+	} `json:"fields"`
+	Footer *struct {
+		Text string `json:"text"`
+	} `json:"footer"`
 }
 
 type Sticker struct {
@@ -235,6 +250,40 @@ type MessageReference struct {
 	MessageID Snowflake `json:"message_id,omitempty"`
 	ChannelID Snowflake `json:"channel_id,omitempty"`
 	GuildID   Snowflake `json:"guild_id,omitempty"`
+}
+
+type Emoji struct {
+	ID   Snowflake `json:"id"`
+	Name string    `json:"name"`
+}
+
+// Key identifies an emoji for comparisons and the reactions endpoint.
+func (e Emoji) Key() string {
+	if e.ID != 0 {
+		return e.Name + ":" + e.ID.String()
+	}
+	return e.Name
+}
+
+type Reaction struct {
+	Emoji Emoji `json:"emoji"`
+	Count int   `json:"count"`
+	Me    bool  `json:"me"`
+}
+
+type ReactionEvent struct {
+	UserID    Snowflake `json:"user_id"`
+	ChannelID Snowflake `json:"channel_id"`
+	MessageID Snowflake `json:"message_id"`
+	Emoji     Emoji     `json:"emoji"`
+}
+
+type Presence struct {
+	User struct {
+		ID Snowflake `json:"id"`
+	} `json:"user"`
+	Status  string    `json:"status"`
+	GuildID Snowflake `json:"guild_id"`
 }
 
 type Message struct {
@@ -253,6 +302,7 @@ type Message struct {
 	Attachments       []Attachment      `json:"attachments"`
 	Embeds            []Embed           `json:"embeds"`
 	Stickers          []Sticker         `json:"sticker_items"`
+	Reactions         []Reaction        `json:"reactions"`
 	ReferencedMessage *Message          `json:"referenced_message"`
 	MessageReference  *MessageReference `json:"message_reference"`
 	Nonce             json.RawMessage   `json:"nonce"`
@@ -323,12 +373,13 @@ type GuildDelete struct {
 // Ready is the subset of the READY event upper consumes. upper identifies
 // without the DEDUPE_USER_OBJECTS capability so users are inlined.
 type Ready struct {
-	SessionID        string    `json:"session_id"`
-	ResumeGatewayURL string    `json:"resume_gateway_url"`
-	User             User      `json:"user"`
-	Guilds           []Guild   `json:"guilds"`
-	PrivateChannels  []Channel `json:"private_channels"`
-	Users            []User    `json:"users"`
+	SessionID        string     `json:"session_id"`
+	ResumeGatewayURL string     `json:"resume_gateway_url"`
+	User             User       `json:"user"`
+	Guilds           []Guild    `json:"guilds"`
+	PrivateChannels  []Channel  `json:"private_channels"`
+	Users            []User     `json:"users"`
+	Presences        []Presence `json:"presences"`
 	Relationships    []struct {
 		Type int  `json:"type"` // 1 friend
 		User User `json:"user"`

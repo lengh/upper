@@ -80,14 +80,16 @@ func New(token string) *Server {
 		Sent:              make(chan map[string]any, 100),
 		Commands:          make(chan map[string]any, 100),
 	}
-	s.nextID.Store(1 << 40)
 	s.ready = DefaultReady()
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	return s
 }
 
+// id returns a real-looking snowflake for "now", so fake messages sort and
+// timestamp like Discord's.
 func (s *Server) id() string {
-	return strconv.FormatUint(s.nextID.Add(1)<<22, 10)
+	ms := uint64(time.Now().UnixMilli() - 1420070400000)
+	return strconv.FormatUint(ms<<22|s.nextID.Add(1)&0x3fffff, 10)
 }
 
 // GatewayURL returns the ws:// URL of the fake gateway.
@@ -223,6 +225,14 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		reply(edited)
 	case len(parts) == 4 && parts[0] == "channels" && parts[2] == "messages" && r.Method == "DELETE":
 		s.Dispatch("MESSAGE_DELETE", map[string]any{"id": parts[3], "channel_id": parts[1]})
+		w.WriteHeader(204)
+	case len(parts) == 7 && parts[4] == "reactions":
+		ev := "MESSAGE_REACTION_ADD"
+		if r.Method == "DELETE" {
+			ev = "MESSAGE_REACTION_REMOVE"
+		}
+		s.Dispatch(ev, map[string]any{"user_id": MeID, "channel_id": parts[1], "message_id": parts[3],
+			"emoji": map[string]any{"name": parts[5]}})
 		w.WriteHeader(204)
 	case len(parts) == 5 && parts[4] == "ack":
 		s.Acks.Add(1)

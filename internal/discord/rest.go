@@ -292,3 +292,15 @@ func (r *REST) OpenDM(ctx context.Context, user Snowflake) (*Channel, error) {
 		map[string]any{"recipients": []Snowflake{user}}, &c)
 	return &c, err
 }
+
+// React adds a reaction from the current user.
+func (r *REST) React(ctx context.Context, channel, msg Snowflake, emoji string) error {
+	path := "/channels/" + channel.String() + "/messages/" + msg.String() + "/reactions/" + url.PathEscape(emoji) + "/@me"
+	return r.do(ctx, "PUT", path, "PUT /channels/"+channel.String()+"/messages/:id/reactions", nil, nil)
+}
+
+// Unreact removes the current user's reaction.
+func (r *REST) Unreact(ctx context.Context, channel, msg Snowflake, emoji string) error {
+	path := "/channels/" + channel.String() + "/messages/" + msg.String() + "/reactions/" + url.PathEscape(emoji) + "/@me"
+	return r.do(ctx, "DELETE", path, "DELETE /channels/"+channel.String()+"/messages/:id/reactions", nil, nil)
+}

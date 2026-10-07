@@ -1,127 +1,181 @@
 package ui
 
 import (
-	"bytes"
-	"encoding/base64"
-	"errors"
-	"os"
-	"os/exec"
-	"unicode/utf16"
-
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
 )
 
-const helpText = `[::b]Navigation[::B]
-  Ctrl+K          jump to any channel or DM (fuzzy search)
-  Alt+U           jump to the next unread channel (mentions first)
-  Alt+↑ / Alt+↓   previous / next channel in the sidebar
-  Tab / Shift+Tab cycle focus: sidebar → messages → input
-  Ctrl+B          toggle the sidebar
-  F1              this help        Ctrl+C / Ctrl+Q  quit
+type helpSection struct {
+	title string
+	keys  [][2]string
+}
 
-[::b]Composer[::B]
-  Enter           send             Ctrl+J or Alt+Enter   new line
-  ↑ (empty input) edit your last message
-  PgUp            browse messages  Esc         cancel reply/edit
+var helpSections = []helpSection{
+	{"Getting around", [][2]string{
+		{"Ctrl+K", "jump to any channel or DM"},
+		{"Alt+A", "next conversation with activity"},
+		{"Alt+1…9", "open activity item 1–9"},
+		{"Alt+/", "back to the previous channel"},
+		{"Alt+↑ ↓", "previous / next channel"},
+		{"Ctrl+P N", "the same, IRC style"},
+		{"Tab", "focus sidebar, then messages"},
+		{"Ctrl+B", "hide or show the sidebar"},
+	}},
+	{"Writing", [][2]string{
+		{"Enter", "send"},
+		{"Ctrl+J", "new line (also Alt/Shift+Enter)"},
+		{"Tab", "complete @name #channel :emoji:"},
+		{"↑", "edit your last message"},
+		{"s/old/new", "fix your last message"},
+		{"+:emoji:", "react to the last message"},
+		{"Esc", "cancel reply or edit"},
+	}},
+	{"Reading", [][2]string{
+		{"PgUp PgDn", "scroll (or mouse wheel)"},
+		{"Alt+U", "jump to the first unread"},
+		{"Alt+N  Alt+P", "next / previous mention of you"},
+		{"Alt+< >", "oldest / newest"},
+		{"Esc", "jump back to the present"},
+	}},
+	{"On a message (Ctrl+↑ or click)", [][2]string{
+		{"↑ ↓  j k", "move between messages"},
+		{"r  Enter", "reply"},
+		{"e", "edit (yours)"},
+		{"d", "delete"},
+		{"a", "react"},
+		{"y", "copy text"},
+		{"o", "open its link in your browser"},
+	}},
+	{"Commands", [][2]string{
+		{"/dm name", "open a direct message"},
+		{"/me /shrug", "actions and classics"},
+		{"/read [all]", "mark read"},
+		{"/theme", "dark, light or mono"},
+		{"/time", "toggle timestamps"},
+		{"/logout /quit", "leave"},
+	}},
+	{"App", [][2]string{
+		{"F1", "this help"},
+		{"Ctrl+L", "redraw the screen"},
+		{"Ctrl+C ×2", "quit (once clears input)"},
+		{"Shift+drag", "select text with the mouse"},
+	}},
+}
 
-[::b]Messages[::B] (focus with Tab or PgUp)
-  ↑ ↓ / k j       select message   g / G       oldest / newest
-  r reply   e edit   d delete   y copy text   i or Esc back to input
-  Scrolling past the top loads older history.
-
-[::b]Commands[::B]
-  /dm <user> [text[]  open a DM with a friend
-  /read              mark everything read
-  /sidebar           toggle the sidebar
-  /logout            forget the stored token and quit
-  /quit              quit
-  Start a message with // to send a literal slash.`
+// helpView shows every key in two columns, grouped by intent.
+type helpView struct {
+	*tview.Box
+	a      *App
+	offset int
+}
 
 func (a *App) showHelp() {
-	tv := tview.NewTextView().SetDynamicColors(true).SetText(helpText)
-	tv.SetBorder(true).SetTitle(" help — Esc to close ").SetBorderColor(color(a.th.border))
-	tv.SetBorderPadding(1, 1, 2, 2)
-	tv.SetInputCapture(func(ev *tcell.EventKey) *tcell.EventKey {
-		if ev.Key() == tcell.KeyEscape || ev.Key() == tcell.KeyF1 || ev.Rune() == 'q' {
-			a.pages.RemovePage("help")
-			a.focus(a.input)
-			return nil
+	h := &helpView{Box: tview.NewBox(), a: a}
+	a.pages.AddPage("help", h, true, true)
+	a.tv.SetFocus(h)
+}
+
+func (h *helpView) lines(colW int) [][]line {
+	th := h.a.th
+	keyW := 13
+	var cols [][]line
+	for _, sec := range helpSections {
+		var ls []line
+		ls = append(ls, line{{text: sec.title, style: th.accent().Bold(true)}})
+		for _, kv := range sec.keys {
+			ls = append(ls, line{
+				{text: padRight(kv[0], keyW), style: th.fg(th.Text).Bold(true)},
+				{text: truncate(kv[1], colW-keyW), style: th.fg(th.Subtle)},
+			})
 		}
-		return ev
-	})
-	a.pages.AddPage("help", centered(tv, 76, 30), true, true)
-	a.tv.SetFocus(tv)
-}
-
-// centered places p in the middle of the screen at up to w×h cells,
-// shrinking to fit small terminals.
-func centered(p tview.Primitive, w, h int) tview.Primitive {
-	return &centerBox{Box: tview.NewBox(), p: p, w: w, h: h}
-}
-
-type centerBox struct {
-	*tview.Box
-	p    tview.Primitive
-	w, h int
-}
-
-func (c *centerBox) Draw(screen tcell.Screen) {
-	sw, sh := screen.Size()
-	w, h := min(c.w, sw-2), min(c.h, sh-2)
-	c.p.SetRect((sw-w)/2, (sh-h)/2, w, h)
-	c.p.Draw(screen)
-}
-
-func (c *centerBox) Focus(delegate func(tview.Primitive)) { delegate(c.p) }
-
-func (c *centerBox) HasFocus() bool { return c.p.HasFocus() }
-
-func (c *centerBox) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
-	return c.p.InputHandler()
-}
-
-func (c *centerBox) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
-	return c.p.MouseHandler()
-}
-
-// copyToClipboard copies text to the system clipboard. Under WSL it uses the
-// Windows clipboard via clip.exe; elsewhere wl-copy/xclip, and finally the
-// OSC 52 escape sequence, which Windows Terminal and most modern terminals
-// support even over SSH.
-func copyToClipboard(text string) error {
-	if text == "" {
-		return errors.New("message has no text to copy")
+		ls = append(ls, nil)
+		cols = append(cols, ls)
 	}
-	if path, err := exec.LookPath("clip.exe"); err == nil {
-		// clip.exe reads UTF-16LE when given a BOM; plain UTF-8 garbles
-		// anything outside ASCII.
-		u := utf16.Encode([]rune(text))
-		buf := bytes.NewBuffer([]byte{0xFF, 0xFE})
-		for _, c := range u {
-			buf.WriteByte(byte(c))
-			buf.WriteByte(byte(c >> 8))
-		}
-		cmd := exec.Command(path)
-		cmd.Stdin = buf
-		if cmd.Run() == nil {
-			return nil
-		}
+	return cols
+}
+
+func padRight(s string, w int) string {
+	for textWidth(s) < w {
+		s += " "
 	}
-	for _, c := range [][]string{{"wl-copy"}, {"xclip", "-selection", "clipboard"}, {"xsel", "-ib"}} {
-		if _, err := exec.LookPath(c[0]); err == nil {
-			cmd := exec.Command(c[0], c[1:]...)
-			cmd.Stdin = bytes.NewBufferString(text)
-			if cmd.Run() == nil {
-				return nil
+	return s
+}
+
+func (h *helpView) Draw(scr tcell.Screen) {
+	th := h.a.th
+	dimBackground(scr, th)
+	sw, _ := scr.Size()
+	wide := sw >= 96
+	pw := 62
+	if wide {
+		pw = 100
+	}
+	x, y, w, ph := panel(scr, th, pw, 32, "Keys & commands", "Esc close · ↑↓ scroll")
+	colW := w
+	if wide {
+		colW = (w - 4) / 2
+	}
+	secs := h.lines(colW)
+	// Flow sections into one or two columns.
+	var left, right []line
+	if wide {
+		total := 0
+		for _, s := range secs {
+			total += len(s)
+		}
+		for _, s := range secs {
+			if len(left) < total/2 {
+				left = append(left, s...)
+			} else {
+				right = append(right, s...)
 			}
 		}
+	} else {
+		for _, s := range secs {
+			left = append(left, s...)
+		}
 	}
-	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
-	if err != nil {
-		return errors.New("no clipboard available")
+	maxOff := max(0, max(len(left), len(right))-ph)
+	h.offset = max(0, min(h.offset, maxOff))
+	for r := 0; r < ph; r++ {
+		if i := h.offset + r; i < len(left) {
+			drawLine(scr, x, y+r, colW, left[i], true, nil)
+		}
+		if i := h.offset + r; wide && i < len(right) {
+			drawLine(scr, x+colW+4, y+r, colW, right[i], true, nil)
+		}
 	}
-	defer tty.Close()
-	_, err = tty.WriteString("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(text)) + "\a")
-	return err
+}
+
+func (h *helpView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
+	return h.WrapInputHandler(func(ev *tcell.EventKey, _ func(tview.Primitive)) {
+		switch {
+		case ev.Key() == tcell.KeyUp || ev.Rune() == 'k':
+			h.offset--
+		case ev.Key() == tcell.KeyDown || ev.Rune() == 'j':
+			h.offset++
+		case ev.Key() == tcell.KeyPgUp:
+			h.offset -= 10
+		case ev.Key() == tcell.KeyPgDn:
+			h.offset += 10
+		default:
+			h.a.pages.RemovePage("help")
+			h.a.focusComposer()
+		}
+	})
+}
+
+func (h *helpView) MouseHandler() func(tview.MouseAction, *tcell.EventMouse, func(tview.Primitive)) (bool, tview.Primitive) {
+	return h.WrapMouseHandler(func(action tview.MouseAction, _ *tcell.EventMouse, _ func(tview.Primitive)) (bool, tview.Primitive) {
+		switch action {
+		case tview.MouseScrollUp:
+			h.offset--
+		case tview.MouseScrollDown:
+			h.offset++
+		case tview.MouseLeftClick:
+			h.a.pages.RemovePage("help")
+			h.a.focusComposer()
+		}
+		return true, nil
+	})
 }

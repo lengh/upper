@@ -78,6 +78,7 @@ func main() {
 	if *demo {
 		srv := discordtest.New("demo")
 		defer srv.Close()
+		srv.SeedDemo()
 		go srv.Demo(ctx)
 		discord.APIBase, discord.GatewayURL, token = srv.APIURL(), srv.GatewayURL(), "demo"
 	} else if token, err = login(ctx); err != nil {

@@ -32,19 +32,10 @@ type Config struct {
 	MarkRead bool `json:"mark_read"`
 	// MentionOnReply pings the author of the message you reply to.
 	MentionOnReply bool `json:"mention_on_reply"`
-	// Theme colours (names or #rrggbb).
-	Theme Theme `json:"theme"`
-}
-
-type Theme struct {
-	Border    string `json:"border"`
-	Accent    string `json:"accent"`
-	Timestamp string `json:"timestamp"`
-	Muted     string `json:"muted"`
-	Mention   string `json:"mention"`
-	Unread    string `json:"unread"`
-	Selected  string `json:"selected"`
-	Error     string `json:"error"`
+	// Theme is "dark", "light" or "mono". NO_COLOR forces mono.
+	Theme string `json:"theme"`
+	// NickWidth is the maximum width of the right-aligned name column.
+	NickWidth int `json:"nick_width"`
 }
 
 func Default() Config {
@@ -53,21 +44,13 @@ func Default() Config {
 		HistoryPage:    50,
 		MaxMessages:    400,
 		MaxChannels:    64,
-		SidebarWidth:   32,
+		SidebarWidth:   28,
 		BellOnMention:  true,
 		SendTyping:     true,
 		MarkRead:       true,
 		MentionOnReply: true,
-		Theme: Theme{
-			Border:    "#5865f2",
-			Accent:    "#5865f2",
-			Timestamp: "#72767d",
-			Muted:     "#8e9297",
-			Mention:   "#faa61a",
-			Unread:    "#ffffff",
-			Selected:  "#404249",
-			Error:     "#ed4245",
-		},
+		Theme:          "dark",
+		NickWidth:      16,
 	}
 }
 
@@ -105,6 +88,7 @@ func Load(path string) (Config, error) {
 	cfg.MaxMessages = clamp(cfg.MaxMessages, 100, 5000)
 	cfg.MaxChannels = clamp(cfg.MaxChannels, 4, 1000)
 	cfg.SidebarWidth = clamp(cfg.SidebarWidth, 16, 80)
+	cfg.NickWidth = clamp(cfg.NickWidth, 6, 32)
 	return cfg, nil
 }
 
@@ -167,4 +151,17 @@ func DeleteToken() error {
 		return err
 	}
 	return nil
+}
+
+// StateDir returns where upper keeps UI state between runs
+// ($XDG_STATE_HOME/upper, by default ~/.local/state/upper).
+func StateDir() (string, error) {
+	if d := os.Getenv("XDG_STATE_HOME"); d != "" {
+		return filepath.Join(d, "upper"), nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".local", "state", "upper"), nil
 }
