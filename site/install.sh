@@ -8,13 +8,17 @@
 #   UPPER_INSTALL_DIR  where to put the binary (default: ~/.local/bin)
 #   UPPER_BASE_URL     where to download from (default: the project site)
 #   UPPER_NO_MODIFY_PATH=1  don't touch shell startup files
+#   UPPER_FORCE=1      reinstall even if the newest version is already there
+#
+# Running it again is safe: an existing install is found and updated in
+# place, or left alone if it's already the newest version.
 #
 # Everything runs inside main(), so a partially downloaded script does nothing.
 
 set -eu
 
 BASE_URL="${UPPER_BASE_URL:-https://lengh.github.io/upper}"
-INSTALL_DIR="${UPPER_INSTALL_DIR:-$HOME/.local/bin}"
+INSTALL_DIR="${UPPER_INSTALL_DIR:-}"
 
 if [ -t 1 ]; then
 	bold=$(printf '\033[1m'); dim=$(printf '\033[2m'); red=$(printf '\033[31m')
@@ -60,6 +64,37 @@ main() {
 	tmp=$(mktemp -d)
 	trap 'rm -rf "$tmp"' EXIT INT TERM
 
+	fetch "$BASE_URL/dl/VERSION" "$tmp/VERSION" || fail "could not reach $BASE_URL"
+	latest=$(tr -d ' \r\n' <"$tmp/VERSION")
+
+	# Find an existing install: the requested directory, ~/.local/bin, or
+	# wherever 'upper' is on the PATH. Update it where it lives.
+	existing=""
+	if [ -n "$INSTALL_DIR" ] && [ -x "$INSTALL_DIR/upper" ]; then
+		existing="$INSTALL_DIR/upper"
+	elif [ -z "$INSTALL_DIR" ] && [ -x "$HOME/.local/bin/upper" ]; then
+		existing="$HOME/.local/bin/upper"
+	elif [ -z "$INSTALL_DIR" ] && command -v upper >/dev/null 2>&1; then
+		found=$(command -v upper)
+		[ -w "$(dirname "$found")" ] && existing="$found"
+	fi
+	[ -n "$INSTALL_DIR" ] || INSTALL_DIR="${existing:+$(dirname "$existing")}"
+	[ -n "$INSTALL_DIR" ] || INSTALL_DIR="$HOME/.local/bin"
+
+	action=install
+	if [ -n "$existing" ]; then
+		current=$("$existing" --version 2>/dev/null | awk '{print $2}')
+		if [ "$current" = "$latest" ] && [ "${UPPER_FORCE:-}" != 1 ]; then
+			step "upper ${bold}$latest${reset} is already installed at $existing"
+			say ""
+			say "  ${green}${bold}Up to date.${reset} Nothing to do."
+			say ""
+			return 0
+		fi
+		action=update
+		step "found upper ${current:-(unknown version)} at $existing, updating to ${bold}$latest${reset}"
+	fi
+
 	file="upper_linux_${arch}.tar.gz"
 	step "downloading $file"
 	fetch "$BASE_URL/dl/$file" "$tmp/$file" || fail "download failed: $BASE_URL/dl/$file"
@@ -71,9 +106,16 @@ main() {
 
 	tar -xzf "$tmp/$file" -C "$tmp"
 	mkdir -p "$INSTALL_DIR"
-	install -m 0755 "$tmp/upper" "$INSTALL_DIR/upper"
+	# Write beside the old binary and rename over it: atomic, and works
+	# even while upper is running in another terminal.
+	install -m 0755 "$tmp/upper" "$INSTALL_DIR/.upper.new"
+	mv -f "$INSTALL_DIR/.upper.new" "$INSTALL_DIR/upper"
 	version=$("$INSTALL_DIR/upper" --version 2>/dev/null || echo "upper")
-	step "installed ${bold}$version${reset} to $INSTALL_DIR/upper"
+	if [ "$action" = update ]; then
+		step "updated to ${bold}$version${reset}"
+	else
+		step "installed ${bold}$version${reset} to $INSTALL_DIR/upper"
+	fi
 
 	case ":$PATH:" in
 		*":$INSTALL_DIR:"*) on_path=1 ;;
@@ -92,6 +134,11 @@ main() {
 	fi
 
 	say ""
+	if [ "$action" = update ]; then
+		say "  ${green}${bold}Updated.${reset} Start it with ${bold}upper${reset}."
+		say ""
+		return 0
+	fi
 	say "  ${green}${bold}Done.${reset}"
 	if [ "$on_path" = 0 ]; then
 		say "  Open a new terminal (or run ${bold}export PATH=\"$INSTALL_DIR:\$PATH\"${reset}), then:"
@@ -102,7 +149,7 @@ main() {
 	say "    ${bold}upper --demo${reset}   ${dim}try it with a fake account first${reset}"
 	say "    ${bold}upper${reset}          ${dim}log in with your token${reset}"
 	say ""
-	say "  ${dim}Run this command again any time to update.${reset}"
+	say "  ${dim}upper updates itself on launch; rerunning this command also updates.${reset}"
 	say ""
 }
 
