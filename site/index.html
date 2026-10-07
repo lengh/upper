@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>upper · Discord in your terminal</title>
+<meta name="description" content="A fast, keyboard-driven Discord client for the terminal, made for WSL. Text chat only: servers, channels, threads and DMs.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231e1e2e'/><text x='16' y='22' font-family='monospace' font-size='18' font-weight='700' text-anchor='middle' fill='%23cba6f7'>❯</text></svg>">
+<style>
+:root {
+  --bg: #11111b; --panel: #181825; --surface: #1e1e2e; --surface2: #313244;
+  --text: #cdd6f4; --subtle: #a6adc8; --muted: #7f849c; --faint: #45475a;
+  --accent: #cba6f7; --link: #74c7ec; --mention: #fab387; --mentbg: #2a2420;
+  --ok: #a6e3a1; --warn: #f9e2af; --err: #f38ba8; --code: #f5e0dc;
+  --n1: #b4befe; --n2: #94e2d5; --n3: #f5c2e7; --n4: #89b4fa; --n5: #f9e2af;
+  --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SF Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #eff1f5; --panel: #e6e9ef; --surface: #ffffff; --surface2: #ccd0da;
+    --text: #4c4f69; --subtle: #5c5f77; --muted: #8c8fa1; --faint: #bcc0cc;
+    --accent: #8839ef; --link: #209fb5; --mention: #fe640b; --mentbg: #fbeee4;
+    --ok: #40a02b; --warn: #df8e1d; --err: #d20f39; --code: #dc8a78;
+    --n1: #7287fd; --n2: #179299; --n3: #ea76cb; --n4: #1e66f5; --n5: #df8e1d;
+  }
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; overflow-x: hidden; background: var(--bg); color: var(--text);
+  font: 16px/1.6 var(--sans);
+}
+a { color: var(--link); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+code, pre, .mono { font-family: var(--mono); }
+.wrap { max-width: 960px; margin: 0 auto; padding: 0 16px; }
+
+header { padding: 72px 0 40px; text-align: center; }
+.logo {
+  font: 700 clamp(9px, 3.2vw, 22px)/1.05 var(--mono); max-width: 100%; overflow: hidden; white-space: pre; display: inline-block;
+  background: linear-gradient(90deg, var(--accent), var(--link));
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  margin: 0 0 20px;
+}
+h1 { font-size: clamp(28px, 5vw, 44px); line-height: 1.15; margin: 0 0 14px; letter-spacing: -0.02em; }
+.lede { color: var(--subtle); font-size: clamp(16px, 2.2vw, 19px); max-width: 620px; margin: 0 auto 32px; }
+
+.install {
+  display: flex; align-items: center; gap: 12px; max-width: 680px; margin: 0 auto;
+  background: var(--panel); border: 1px solid var(--surface2); border-radius: 12px;
+  padding: 14px 14px 14px 18px; text-align: left;
+}
+.install code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font-size: 15px; scrollbar-width: thin; }
+.install .p { color: var(--accent); user-select: none; margin-right: 8px; }
+button.copy {
+  flex: none; font: 600 14px var(--sans); color: var(--bg); background: var(--accent);
+  border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer; min-width: 84px;
+}
+button.copy:hover { filter: brightness(1.08); }
+button.copy:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.hint { color: var(--muted); font-size: 14px; margin-top: 14px; }
+.hint code { color: var(--subtle); }
+
+/* Terminal preview: a faithful rendering of the real interface. */
+.term {
+  margin: 56px auto 0; max-width: 960px; border-radius: 12px; overflow: hidden;
+  border: 1px solid var(--surface2); background: #1e1e2e; color: #cdd6f4;
+  box-shadow: 0 24px 60px -20px rgba(0,0,0,.55);
+}
+.term .chrome { display: flex; gap: 8px; padding: 12px 14px; background: #181825; }
+.term .chrome i { width: 12px; height: 12px; border-radius: 50%; background: #45475a; }
+.term pre {
+  margin: 0; padding: 4px 0 8px; font-size: clamp(8.5px, 1.45vw, 13.5px); line-height: 1.5;
+  overflow-x: auto;
+}
+.t-bar { background: #181825; color: #bac2de; display: block; }
+.mu { color: #7f849c } .fa { color: #45475a } .ac { color: #cba6f7 } .ok { color: #a6e3a1 }
+.wa { color: #f9e2af } .er { color: #f38ba8 } .me { color: #fab387 } .tx { color: #cdd6f4 } .su { color: #a6adc8 }
+.b { font-weight: 700 } .i { font-style: italic }
+.k1 { color: #b4befe } .k2 { color: #8aa8ff } .k3 { color: #f5c2e7 } .k4 { color: #94e2d5 } .k5 { color: #f9e2af }
+.cd { background: #11111b; color: #f5e0dc; }
+.hl { background: #2a2420; }
+.pill { background: #313244; color: #a6adc8; }
+.badge { background: #f38ba8; color: #11111b; font-weight: 700; }
+.sel { background: #313244; }
+
+section { padding: 72px 0 0; }
+h2 { font-size: 26px; margin: 0 0 8px; letter-spacing: -0.01em; }
+.sub { color: var(--subtle); margin: 0 0 28px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); gap: 16px; }
+.card { background: var(--panel); border: 1px solid var(--surface2); border-radius: 12px; padding: 20px; }
+.card h3 { margin: 0 0 6px; font-size: 16px; }
+.card p { margin: 0; color: var(--subtle); font-size: 15px; }
+.card .ic { font: 700 18px var(--mono); color: var(--accent); margin-bottom: 8px; display: block; }
+
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--surface2); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; }
+td code { font-size: 13px; }
+.sha { color: var(--muted); font-size: 12px; word-break: break-all; }
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--surface2); border-radius: 12px; }
+.table-wrap table tr:last-child td { border-bottom: 0; }
+
+kbd {
+  font: 600 13px var(--mono); background: var(--surface); border: 1px solid var(--surface2);
+  border-bottom-width: 2px; border-radius: 6px; padding: 1px 7px; white-space: nowrap;
+}
+.keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr)); gap: 8px 32px; }
+.keys div { display: flex; gap: 14px; align-items: baseline; padding: 6px 0; border-bottom: 1px dashed var(--surface2); }
+.keys div span:first-child { flex: none; min-width: 84px; }
+.keys div span:last-child { color: var(--subtle); }
+
+pre.block {
+  background: var(--panel); border: 1px solid var(--surface2); border-radius: 12px;
+  padding: 16px 18px; overflow-x: auto; font-size: 14px; line-height: 1.6; margin: 0;
+}
+pre.block .c { color: var(--muted); }
+
+.warn {
+  border: 1px solid color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 8%, var(--panel));
+  border-radius: 12px; padding: 18px 20px; color: var(--subtle); font-size: 15px;
+}
+.warn strong { color: var(--text); }
+
+footer { padding: 72px 0 48px; color: var(--muted); font-size: 14px; text-align: center; }
+footer a { color: var(--subtle); }
+
+@media (max-width: 560px) {
+  header { padding-top: 48px; }
+  .install { flex-direction: column; align-items: stretch; padding: 14px; }
+  button.copy { width: 100%; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+<div class="logo" aria-hidden="true"> _  _ _ __ _ __  ___ _ _
+| || | '_ \ '_ \/ -_) '_|
+ \_,_| .__/ .__/\___|_|
+     |_|  |_|            </div>
+<h1>Discord, in your terminal.</h1>
+<p class="lede">A fast, keyboard-driven client for text chat: servers, channels, threads and DMs. Designed after the IRC clients people live in all day, built for Ubuntu on WSL.</p>
+
+<div class="install" role="group" aria-label="Install command">
+  <code id="cmd"><span class="p">$</span>curl -fsSL https://lengh.github.io/upper/install.sh | sh</code>
+  <button class="copy" data-copy="curl -fsSL https://lengh.github.io/upper/install.sh | sh" aria-label="Copy install command">Copy</button>
+</div>
+<p class="hint">Paste into your Ubuntu (WSL) terminal. Then try <code>upper --demo</code> — no account needed.</p>
+</header>
+
+<div class="term" aria-label="Screenshot of upper showing a server channel">
+<div class="chrome" aria-hidden="true"><i></i><i></i><i></i></div>
+<pre><span class="t-bar"> <span class="ac b">#</span> <span class="tx b">general</span>  <span class="su">Everything Go · be kind · no recruiters</span>                                          <span class="mu">Gophers</span>  <span class="ok">●</span> </span><span class="mu b"> DIRECT MESSAGES</span>           <span class="fa">│</span> <span class="mu">11:32</span>  <span class="k2 b">bobby</span> <span class="fa">│</span> it's the race in the cache warmer. repro:
+<span class="tx">•</span> <span class="wa">◐</span> <span class="tx b">Bob</span>                 <span class="badge"> 1 </span>  <span class="fa">│</span>        <span class="fa">bobby</span> <span class="fa">│</span> <span class="cd"> for i := range workers {                          </span>
+  <span class="ok">●</span> <span class="su">Alice</span>                  <span class="fa">│</span>              <span class="fa">│</span> <span class="cd">     go warm(cache, i) // shares buf!              </span>
+  <span class="mu">◇</span> <span class="su">weekend plans</span>          <span class="fa">│</span>              <span class="fa">│</span> <span class="cd"> }                                                 </span>
+                           <span class="fa">│</span> <span class="mu">11:33</span>  <span class="k1 b">Alice</span> <span class="fa">│</span> oh nice catch. <span class="cd">go test -race</span> flags it immediately
+<span class="mu b"> SERVERS</span>                   <span class="fa">│</span>              <span class="fa">│</span> <span class="ac b pill"> 🎯 3 </span> <span class="pill"> 👀 1 </span>
+ <span class="mu">▾</span> <span class="su">Gophers</span>                 <span class="fa">│</span>
+   <span class="fa">TEXT</span>                    <span class="fa">│</span>              <span class="fa">│</span> <span class="fa">╭─</span> <span class="k1">Alice</span> <span class="mu">oh nice catch. go test -race flags it…</span>
+<span class="sel"><span class="ac">▌</span>  <span class="ac">#</span> <span class="tx b">general</span>               </span><span class="fa">│</span> <span class="mu">11:34</span>    <span class="ac b">You</span> <span class="fa">│</span> I'll send a patch after lunch <span class="fa">(edited)</span>
+     <span class="fa">↳</span> <span class="su">release-planning</span>    <span class="fa">│</span> <span class="mu">12:31</span>  <span class="k4 b">Carol</span> <span class="fa">│</span> related reading for anyone curious:
+   <span class="fa">#</span> <span class="su">help</span>                  <span class="fa">│</span>              <span class="fa">│</span> <span style="color:#00add8">▍</span> <span class="mu">go.dev</span>
+   <span class="fa">#</span> <span class="su">off-topic</span>             <span class="fa">│</span>              <span class="fa">│</span> <span style="color:#00add8">▍</span> <span class="b" style="color:#74c7ec">Data Race Detector</span>
+ <span class="mu">▸</span> <span class="tx b">Synthwave Café</span>        <span class="tx">•</span> <span class="fa">│</span> <span class="er">───────────────────────────────────────────────────────────────── <b>new</b> ─</span>
+                           <span class="fa">│</span><span class="hl"> <span class="mu">14:06</span>  <span class="k1 b">Alice</span> <span class="me">┃</span> <span class="me b">@You</span> patch looks good, approved ✅ merging when CI is green  </span>
+                           <span class="fa">│</span> <span class="mu">14:11</span>  <span class="k2 b">bobby</span> <span class="fa">│</span> <b>release notes</b> are drafted, skim them <i>before</i> friday <span class="mu">░░░░░░░░░</span>
+<span class="t-bar"> <span class="mu">14:31</span> <span class="fa">│</span> <span class="mu">1:</span><span class="ac b">Bob</span><span class="me">(1)</span>  <span class="mu">2:</span><span class="tx">#lounge</span>                                                            <span class="su i">Carol is typing...</span> </span><span class="ac b"> ❯</span> <span class="mu i">Message #general</span>
+</pre>
+</div>
+
+<section>
+<h2>Made for reading and replying, fast</h2>
+<p class="sub">Every choice is borrowed from two decades of IRC clients — WeeChat, irssi, catgirl, senpai — and adapted to Discord.</p>
+<div class="grid">
+  <div class="card"><span class="ic">│</span><h3>A timeline you can scan</h3><p>Names right-aligned against a rule, hanging indents, times only when they change, a red <em>new</em> line where you stopped reading.</p></div>
+  <div class="card"><span class="ic">1:</span><h3>The hotlist</h3><p>What's waiting sits in the status bar, numbered. <kbd>Alt+A</kbd> jumps to the next, <kbd>Alt+1…9</kbd> to any of them.</p></div>
+  <div class="card"><span class="ic">❯</span><h3>A composer that helps</h3><p>Tab-completes <code>@names</code>, <code>#channels</code> and <code>:emoji:</code>. <code>s/old/new</code> fixes typos, <code>+:fire:</code> reacts. Drafts survive restarts.</p></div>
+  <div class="card"><span class="ic">⌘</span><h3>Jump anywhere</h3><p><kbd>Ctrl+K</kbd> fuzzy-finds any channel or DM and shows why it matched. <kbd>Alt+/</kbd> flips back.</p></div>
+  <div class="card"><span class="ic">●</span><h3>Respects your attention</h3><p>Marks things read only while you're looking. Mentions ring the bell and show in your tab title. Muted servers stay quiet.</p></div>
+  <div class="card"><span class="ic">⚡</span><h3>Light and resilient</h3><p>One static binary. Compressed gateway, resumes after drops without reloading, stays within Discord's rate limits by design.</p></div>
+</div>
+</section>
+
+<section>
+<h2>Keys worth knowing</h2>
+<p class="sub">Press <kbd>F1</kbd> inside upper for all of them.</p>
+<div class="keys">
+  <div><span><kbd>Ctrl+K</kbd></span><span>jump to any channel or DM</span></div>
+  <div><span><kbd>Alt+A</kbd></span><span>next conversation with activity</span></div>
+  <div><span><kbd>Alt+/</kbd></span><span>back to the previous channel</span></div>
+  <div><span><kbd>Tab</kbd></span><span>complete names, channels, emoji</span></div>
+  <div><span><kbd>↑</kbd></span><span>edit your last message</span></div>
+  <div><span><kbd>Ctrl+J</kbd></span><span>new line</span></div>
+  <div><span><kbd>Ctrl+↑</kbd></span><span>select a message: reply, react, copy…</span></div>
+  <div><span><kbd>Alt+U</kbd></span><span>scroll to the first unread</span></div>
+</div>
+</section>
+
+<section id="download">
+<h2>Install</h2>
+<p class="sub">The one-liner downloads the right build, verifies its SHA-256 checksum, installs to <code>~/.local/bin</code> and puts it on your PATH. Run it again to update.</p>
+<pre class="block"><span class="c"># Ubuntu on WSL (or any Linux, x86-64 or ARM64)</span>
+curl -fsSL https://lengh.github.io/upper/install.sh | sh
+
+<span class="c"># prefer to read it first?</span>
+curl -fsSLO https://lengh.github.io/upper/install.sh
+less install.sh &amp;&amp; sh install.sh</pre>
+
+<p class="sub" style="margin-top:28px">Or download a build yourself — version <code>{{VERSION}}</code>, built {{DATE}}:</p>
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Platform</th><th>File</th><th>SHA-256</th></tr></thead>
+  <tbody>
+    <tr><td>Linux / WSL x86-64</td><td><a href="dl/upper_linux_amd64.tar.gz"><code>upper_linux_amd64.tar.gz</code></a></td><td class="sha mono">{{SHA_AMD64}}</td></tr>
+    <tr><td>Linux / WSL ARM64</td><td><a href="dl/upper_linux_arm64.tar.gz"><code>upper_linux_arm64.tar.gz</code></a></td><td class="sha mono">{{SHA_ARM64}}</td></tr>
+  </tbody>
+</table>
+</div>
+<pre class="block" style="margin-top:16px"><span class="c"># manual install</span>
+tar -xzf upper_linux_amd64.tar.gz
+install -m 755 upper ~/.local/bin/upper</pre>
+
+<p class="sub" style="margin-top:28px">Use <a href="https://aka.ms/terminal">Windows Terminal</a> for true colour, mouse support and emoji. Uninstall with <code>rm ~/.local/bin/upper</code>; <code>upper --logout</code> forgets your token first.</p>
+</section>
+
+<section>
+<div class="warn">
+  <strong>Before you log in:</strong> upper uses your personal account token. Discord's Terms of Service don't allow third-party clients, and accounts have occasionally been flagged for using them. upper keeps the risk low — it identifies itself honestly, never scrapes or automates, and stays far inside rate limits — but it isn't zero. Your token is stored only on your machine, readable only by you.
+</div>
+</section>
+
+<footer>
+  upper · text chat only, by design: no voice, no images, no uploads ·
+  <a href="dl/SHA256SUMS">SHA256SUMS</a>
+</footer>
+
+</div>
+<script>
+document.querySelectorAll("button.copy").forEach(function (b) {
+  b.addEventListener("click", function () {
+    var text = b.getAttribute("data-copy");
+    var done = function () { b.textContent = "Copied ✓"; setTimeout(function () { b.textContent = "Copy"; }, 1600); };
+    if (navigator.clipboard && window.isSecureContext) {
+      navigator.clipboard.writeText(text).then(done, function () { select(); });
+    } else { select(); }
+    function select() {
+      var r = document.createRange(); r.selectNodeContents(document.getElementById("cmd"));
+      var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+      b.textContent = "Ctrl+C to copy";
+    }
+  });
+});
+</script>
+</body>
+</html>

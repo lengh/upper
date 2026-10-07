@@ -47,19 +47,25 @@ messages. There are no voice calls, images or file uploads.
 
 ## Install (WSL / Linux)
 
-You need Go 1.21 or newer, which automatically downloads the exact toolchain
-the project pins. On Ubuntu 24.04 and later, `apt install golang-go` is
-enough. Older releases ship an older Go, so use `sudo snap install go
---classic` or the tarball from <https://go.dev/dl>.
+In your Ubuntu (WSL) terminal:
 
 ```sh
-sudo apt install golang-go git
-git clone https://github.com/lengh/upper
-cd upper
-go build -o ~/.local/bin/upper ./cmd/upper
+curl -fsSL https://lengh.github.io/upper/install.sh | sh
 ```
 
-Make sure `~/.local/bin` is on your `PATH`, then run `upper`.
+The installer picks the right build (x86-64 or ARM64), verifies its SHA-256
+checksum, installs it to `~/.local/bin` and adds that to your PATH if needed.
+Run the same command again to update. Builds and the download page live at
+<https://lengh.github.io/upper>, and the
+[pages workflow](.github/workflows/pages.yml) rebuilds them on every push.
+
+To build from source instead, you need Go 1.21 or newer, which automatically
+downloads the exact toolchain the project pins:
+
+```sh
+git clone https://github.com/lengh/upper && cd upper
+go build -o ~/.local/bin/upper ./cmd/upper
+```
 
 **Try it first without an account:** `upper --demo` starts the interface
 against a built-in fake server, with no Discord connection at all.
