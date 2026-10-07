@@ -30,8 +30,16 @@ var helpSections = []helpSection{
 		{"+:emoji:", "react to the last message"},
 		{"Esc", "cancel reply or edit"},
 	}},
+	{"Jump labels: any message in two keys", [][2]string{
+		{"Alt+R", "reply to a message on screen"},
+		{"Alt+E", "react to one"},
+		{"Alt+O", "open a link from one"},
+		{"Alt+Y", "copy one"},
+		{"f", "select one (message mode)"},
+	}},
 	{"Reading", [][2]string{
 		{"PgUp PgDn", "scroll (or mouse wheel)"},
+		{"Ctrl+F", "find in channel · ↑↓ step"},
 		{"Alt+U", "jump to the first unread"},
 		{"Alt+N  Alt+P", "next / previous mention of you"},
 		{"Alt+< >", "oldest / newest"},
@@ -40,11 +48,9 @@ var helpSections = []helpSection{
 	{"On a message (Ctrl+↑ or click)", [][2]string{
 		{"↑ ↓  j k", "move between messages"},
 		{"r  Enter", "reply"},
-		{"e", "edit (yours)"},
-		{"d", "delete"},
-		{"a", "react"},
-		{"y", "copy text"},
-		{"o", "open its link in your browser"},
+		{"e  d", "edit · delete"},
+		{"a  y  o", "react · copy · open link"},
+		{"?", "this help (also in the sidebar)"},
 	}},
 	{"Commands", [][2]string{
 		{"/dm name", "open a direct message"},
@@ -52,6 +58,7 @@ var helpSections = []helpSection{
 		{"/read [all]", "mark read"},
 		{"/theme", "dark, light or mono"},
 		{"/time", "toggle timestamps"},
+		{"/update", "update now (also on launch)"},
 		{"/logout /quit", "leave"},
 	}},
 	{"App", [][2]string{

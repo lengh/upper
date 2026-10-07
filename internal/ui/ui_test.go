@@ -207,3 +207,28 @@ func TestSedPattern(t *testing.T) {
 		t.Fatalf("quick react = %v", m)
 	}
 }
+
+func TestHighlightLine(t *testing.T) {
+	th := darkTheme()
+	l := line{{text: "Fix the CI job", style: th.base()}}
+	got := highlightLine(l, "ci", th)
+	if spansText(got) != "Fix the CI job" || len(got) != 3 || got[1].text != "CI" {
+		t.Fatalf("highlight = %+v", got)
+	}
+	if _, bg, _ := got[1].style.Decompose(); bg != th.Warn {
+		t.Fatal("match not highlighted")
+	}
+}
+
+func TestHintKeysUnique(t *testing.T) {
+	seen := map[rune]bool{}
+	for _, r := range hintKeys {
+		if seen[r] {
+			t.Fatalf("duplicate hint key %q", r)
+		}
+		seen[r] = true
+	}
+	if len(seen) != 26 || hintKeys[0] != 'a' {
+		t.Fatal("hint keys must cover the alphabet, home row first")
+	}
+}

@@ -70,6 +70,12 @@ type msgView struct {
 
 	anchor      string // message key kept in place across reloads
 	anchorDelta int
+
+	hint       *hintState // jump labels on screen
+	query      string     // active search, lower-case
+	matches    []int
+	match      int
+	positioned bool // opened at the first unread yet
 }
 
 func newMsgView(a *App) *msgView {
@@ -90,6 +96,7 @@ func (v *msgView) setChannel(id Snowflake) {
 	v.loadErr = ""
 	v.anchor = ""
 	v.newSince = v.a.st.LastRead(id)
+	v.hint, v.query, v.matches, v.positioned = nil, "", nil, false
 	clear(v.cache)
 	v.reload()
 }
@@ -562,6 +569,10 @@ func (v *msgView) Draw(scr tcell.Screen) {
 		v.layout(w)
 	}
 
+	if !v.positioned {
+		v.positioned = true
+		v.openAtUnread(h)
+	}
 	maxScroll := max(0, len(v.rows)-h)
 	v.scroll = max(0, min(v.scroll, maxScroll))
 	first := len(v.rows) - h - v.scroll
@@ -576,6 +587,9 @@ func (v *msgView) Draw(scr tcell.Screen) {
 	me := a.st.Me().ID
 	for r := 0; top+r < y+h && first+r < len(v.rows); r++ {
 		v.drawRow(scr, x, top+r, w, v.rows[first+r], v.timeW, me)
+	}
+	if v.hint != nil {
+		v.drawHintBadges(scr, x, top, first, y+h-top)
 	}
 
 	if v.scroll > 0 {
@@ -699,8 +713,14 @@ func (v *msgView) drawRow(scr tcell.Screen, x, y, w int, r mrow, timeW int, me S
 	col += 2
 
 	l := r.text
-	if m.Pending || m.Failed {
-		l = restyle(l, func(s tcell.Style) tcell.Style { return s.Foreground(th.Muted) })
+	_, labelled := v.hint.labelOf(r.msg)
+	if m.Pending || m.Failed || v.hint != nil && !labelled {
+		// Pending text is quiet; while labels are up, everything that
+		// can't be picked steps back.
+		l = restyle(l, func(s tcell.Style) tcell.Style { return s.Foreground(th.Faint) })
+	}
+	if v.query != "" {
+		l = highlightLine(l, v.query, th)
 	}
 	drawLine(scr, col, y, x+w-col-1, l, selected, bg)
 }
@@ -923,6 +943,18 @@ func (v *msgView) jumpHighlight(dir int) {
 	v.a.flash("no more highlights in this direction")
 }
 
+// openAtUnread starts a channel at its first unread message when there's
+// more unread than fits on screen, so you read in order instead of
+// landing at the end. Nothing is marked read until you reach the bottom.
+func (v *msgView) openAtUnread(h int) {
+	for k, r := range v.rows {
+		if r.kind == rowNew && len(v.rows)-k > h {
+			v.scroll = max(0, len(v.rows)-h-max(0, k-1))
+			return
+		}
+	}
+}
+
 func (v *msgView) scrollToUnread() {
 	for k, r := range v.rows {
 		if r.kind == rowNew {
@@ -943,6 +975,10 @@ func (v *msgView) selectedMessage() (discord.Message, bool) {
 func (v *msgView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
 	return v.WrapInputHandler(func(ev *tcell.EventKey, setFocus func(tview.Primitive)) {
 		a := v.a
+		if v.hint != nil {
+			v.hintKey(ev)
+			return
+		}
 		h := v.height()
 		switch ev.Key() {
 		case tcell.KeyUp:
@@ -1037,6 +1073,10 @@ func (v *msgView) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
 			if ok {
 				a.openLink(m)
 			}
+		case 'f':
+			a.startHints(hintSelect)
+		case '?':
+			a.showHelp()
 		case 'i', 'q':
 			v.scrollBottom()
 			a.focusComposer()

@@ -179,6 +179,8 @@ footer a { color: var(--subtle); }
   <div class="card"><span class="ic">│</span><h3>A timeline you can scan</h3><p>Names right-aligned against a rule, hanging indents, times only when they change, a red <em>new</em> line where you stopped reading.</p></div>
   <div class="card"><span class="ic">1:</span><h3>The hotlist</h3><p>What's waiting sits in the status bar, numbered. <kbd>Alt+A</kbd> jumps to the next, <kbd>Alt+1…9</kbd> to any of them.</p></div>
   <div class="card"><span class="ic">❯</span><h3>A composer that helps</h3><p>Tab-completes <code>@names</code>, <code>#channels</code> and <code>:emoji:</code>. <code>s/old/new</code> fixes typos, <code>+:fire:</code> reacts. Drafts survive restarts.</p></div>
+  <div class="card"><span class="ic">a</span><h3>Any message, two keys</h3><p>Jump labels put a letter on every message on screen: <kbd>Alt+R</kbd> then <kbd>s</kbd> replies to it. React, copy and open links the same way.</p></div>
+  <div class="card"><span class="ic">↻</span><h3>Updates itself</h3><p>Every launch checks for a new build, verifies it and swaps it in. Launch again and you're on the latest.</p></div>
   <div class="card"><span class="ic">⌘</span><h3>Jump anywhere</h3><p><kbd>Ctrl+K</kbd> fuzzy-finds any channel or DM and shows why it matched. <kbd>Alt+/</kbd> flips back.</p></div>
   <div class="card"><span class="ic">●</span><h3>Respects your attention</h3><p>Marks things read only while you're looking. Mentions ring the bell and show in your tab title. Muted servers stay quiet.</p></div>
   <div class="card"><span class="ic">⚡</span><h3>Light and resilient</h3><p>One static binary. Compressed gateway, resumes after drops without reloading, stays within Discord's rate limits by design.</p></div>
@@ -196,13 +198,14 @@ footer a { color: var(--subtle); }
   <div><span><kbd>↑</kbd></span><span>edit your last message</span></div>
   <div><span><kbd>Ctrl+J</kbd></span><span>new line</span></div>
   <div><span><kbd>Ctrl+↑</kbd></span><span>select a message: reply, react, copy…</span></div>
-  <div><span><kbd>Alt+U</kbd></span><span>scroll to the first unread</span></div>
+  <div><span><kbd>Alt+R</kbd></span><span>reply to any message on screen</span></div>
+  <div><span><kbd>Ctrl+F</kbd></span><span>find in the channel</span></div>
 </div>
 </section>
 
 <section id="download">
 <h2>Install</h2>
-<p class="sub">The one-liner downloads the right build, verifies its SHA-256 checksum, installs to <code>~/.local/bin</code> and puts it on your PATH. Run it again to update.</p>
+<p class="sub">The one-liner downloads the right build, verifies its SHA-256 checksum, installs to <code>~/.local/bin</code> and puts it on your PATH. After that, upper keeps itself up to date on every launch.</p>
 <pre class="block"><span class="c"># Ubuntu on WSL (or any Linux, x86-64 or ARM64)</span>
 curl -fsSL https://lengh.github.io/upper/install.sh | sh
 

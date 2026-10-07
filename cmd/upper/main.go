@@ -19,6 +19,7 @@ import (
 	"github.com/lengh/upper/internal/discord/discordtest"
 	"github.com/lengh/upper/internal/state"
 	"github.com/lengh/upper/internal/ui"
+	"github.com/lengh/upper/internal/update"
 	"golang.org/x/term"
 )
 
@@ -44,6 +45,8 @@ func main() {
 	logout := flag.Bool("logout", false, "delete the stored token and exit")
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	demo := flag.Bool("demo", false, "try the interface against a built-in fake server (no Discord account used)")
+	updateNow := flag.Bool("update", false, "check for an update, install it and exit")
+	noUpdate := flag.Bool("no-update", false, "skip the update check this time (or set UPPER_NO_UPDATE=1)")
 	flag.Parse()
 
 	if *showVersion {
@@ -56,6 +59,27 @@ func main() {
 		}
 		fmt.Println("Token removed.")
 		return
+	}
+
+	if u := os.Getenv("UPPER_BASE_URL"); u != "" {
+		update.BaseURL = u
+	}
+	if *updateNow {
+		if !update.Enabled(version) {
+			fmt.Println("This build (" + version + ") was made from source and doesn't update itself.")
+			return
+		}
+		if updated, checked := selfUpdate(context.Background(), true); checked && !updated {
+			fmt.Println("upper", version, "is up to date.")
+		}
+		return
+	}
+	// Check on every launch. If a new version was installed, stop here: the
+	// next launch runs it.
+	if !*noUpdate && os.Getenv("UPPER_NO_UPDATE") == "" {
+		if updated, _ := selfUpdate(context.Background(), false); updated {
+			return
+		}
 	}
 
 	// Endpoint overrides for testing against a local fake server.
@@ -85,6 +109,7 @@ func main() {
 		fatal(err)
 	}
 
+	ui.Version = version
 	rest := discord.NewREST(token)
 	gw := discord.NewGateway(token)
 	app := ui.New(cfg, state.New(), rest, gw)
@@ -144,6 +169,43 @@ func login(ctx context.Context) (string, error) {
 		}
 		return token, nil
 	}
+}
+
+// selfUpdate installs a newer build if there is one. It reports whether it
+// updated and whether the check itself succeeded. Failures are reported but
+// never block the launch.
+func selfUpdate(ctx context.Context, verbose bool) (updated, checked bool) {
+	if !update.Enabled(version) {
+		return false, false
+	}
+	cctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	latest, err := update.Latest(cctx)
+	cancel()
+	if err != nil {
+		if verbose {
+			fmt.Fprintln(os.Stderr, "upper: couldn't check for updates:", err)
+		}
+		return false, false
+	}
+	if latest == version {
+		return false, true
+	}
+	fmt.Printf("upper: updating %s → %s … ", version, latest)
+	exe, err := os.Executable()
+	if err == nil {
+		actx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		err = update.Apply(actx, exe)
+		cancel()
+	}
+	if err != nil {
+		fmt.Println("failed")
+		fmt.Fprintln(os.Stderr, "upper: update failed, starting the current version:", err)
+		time.Sleep(1500 * time.Millisecond)
+		return false, true
+	}
+	fmt.Println("done")
+	fmt.Println("Run upper again to start the new version.")
+	return true, true
 }
 
 func fatal(err error) {

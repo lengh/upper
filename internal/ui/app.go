@@ -74,6 +74,8 @@ type App struct {
 	loading    map[Snowflake]bool
 	subscribed []Snowflake
 	sidebarOn  bool
+	narrowPin  bool // sidebar forced visible on a narrow terminal
+	screenW    int
 	lastTyping time.Time
 	ackTimer   *time.Timer
 	flashMsg   string
@@ -184,6 +186,7 @@ func (a *App) build() {
 	a.tv.SetBeforeDrawFunc(func(s tcell.Screen) bool {
 		a.screen = s
 		w, _ := s.Size()
+		a.screenW = w
 		a.body.ResizeItem(a.side, a.sidebarWidth(w), 0)
 		a.prompt.fit()
 		return false
@@ -213,10 +216,21 @@ func (a *App) retheme() {
 // sidebarWidth gives the sidebar its configured width, but never more than
 // a third of a narrow terminal, and nothing when hidden.
 func (a *App) sidebarWidth(screenW int) int {
-	if !a.sidebarOn {
+	if !a.sidebarVisible(screenW) {
 		return 0
 	}
 	return max(16, min(a.cfg.SidebarWidth, screenW/3))
+}
+
+// narrowWidth is the breakpoint below which the conversation gets the whole
+// screen; the sidebar comes back with Ctrl+B or when the window widens.
+const narrowWidth = 64
+
+func (a *App) sidebarVisible(screenW int) bool {
+	if screenW > 0 && screenW < narrowWidth {
+		return a.narrowPin
+	}
+	return a.sidebarOn
 }
 
 // Run starts the gateway and blocks until the user quits.
@@ -463,7 +477,7 @@ func (a *App) onReady() {
 	a.ready = true
 	// A fresh session forgets subscriptions; re-subscribe recent ones.
 	a.gw.Subscribe(a.subscribed)
-	a.side.restoreExpanded(a.saved.Expanded)
+	a.side.restoreCollapsed(a.saved.Collapsed)
 	switch {
 	case a.current != 0:
 		if _, ok := a.st.Channel(a.current); !ok {
@@ -553,7 +567,7 @@ func (a *App) focusComposer() { a.focus(a.input) }
 
 func (a *App) cycleFocus(back bool) {
 	order := []tview.Primitive{a.input, a.side, a.view}
-	if !a.sidebarOn {
+	if !a.sidebarVisible(a.screenW) {
 		order = []tview.Primitive{a.input, a.view}
 	}
 	cur := a.tv.GetFocus()
@@ -575,11 +589,15 @@ func (a *App) cycleFocus(back bool) {
 }
 
 func (a *App) toggleSidebar() {
-	a.sidebarOn = !a.sidebarOn
-	if !a.sidebarOn && a.tv.GetFocus() == tview.Primitive(a.side) {
+	if a.screenW > 0 && a.screenW < narrowWidth {
+		a.narrowPin = !a.narrowPin
+	} else {
+		a.sidebarOn = !a.sidebarOn
+		a.saved.Sidebar = &a.sidebarOn
+	}
+	if !a.sidebarVisible(a.screenW) && a.tv.GetFocus() == tview.Primitive(a.side) {
 		a.focusComposer()
 	}
-	a.saved.Sidebar = &a.sidebarOn
 }
 
 func (a *App) overlayOpen() bool {
@@ -628,6 +646,12 @@ func (a *App) onGlobalKey(ev *tcell.EventKey) *tcell.EventKey {
 	case tcell.KeyCtrlK:
 		a.openSwitcher("")
 		return nil
+	case tcell.KeyCtrlF:
+		if a.mode != modeSearch {
+			a.resetCompose()
+			a.startSearch()
+			return nil
+		}
 	case tcell.KeyCtrlB, tcell.KeyF2:
 		a.toggleSidebar()
 		return nil
@@ -668,6 +692,14 @@ func (a *App) onGlobalKey(ev *tcell.EventKey) *tcell.EventKey {
 		switch r := ev.Rune(); {
 		case r == 'a' || r == 'A':
 			a.nextActivity()
+		case r == 'r' || r == 'R':
+			a.startHints(hintReply)
+		case r == 'e' || r == 'E':
+			a.startHints(hintReact)
+		case r == 'o' || r == 'O':
+			a.startHints(hintOpen)
+		case r == 'y' || r == 'Y':
+			a.startHints(hintCopy)
 		case r == '/':
 			a.togglePrevious()
 		case r == 'u' || r == 'U':
@@ -866,7 +898,7 @@ func (a *App) persist() {
 			a.drafts[a.current] = text
 		}
 	}
-	a.saved.Expanded = a.side.expandedIDs()
+	a.saved.Collapsed = a.side.collapsedIDs()
 	a.saved.Drafts = a.drafts
 	saveUIState(a.saved)
 }

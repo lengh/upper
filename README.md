@@ -55,7 +55,13 @@ curl -fsSL https://lengh.github.io/upper/install.sh | sh
 
 The installer picks the right build (x86-64 or ARM64), verifies its SHA-256
 checksum, installs it to `~/.local/bin` and adds that to your PATH if needed.
-Run the same command again to update. Builds and the download page live at
+
+**Updates are automatic.** Every launch checks for a newer build (quickly:
+it gives up after 3 seconds if you're offline). If there is one, upper
+downloads it, verifies its checksum, swaps it in atomically and exits with
+*Run upper again*. The next launch starts the new version. `upper --update`
+updates without launching, `/update` does it from inside the app, and
+`upper --no-update` (or `UPPER_NO_UPDATE=1`) skips the check. Builds and the download page live at
 <https://lengh.github.io/upper>, and the
 [pages workflow](.github/workflows/pages.yml) rebuilds them on every push.
 
@@ -90,6 +96,14 @@ the stored copy.
 
 ## Using it
 
+The sidebar is an inbox. **Direct messages** lists only conversations with
+something new, plus the one that's open; every other DM is a `Ctrl+K` away.
+**Servers** are all expanded, with their channels in Discord's order (fold
+one with `←`, and that's remembered). When there's more unread than fits on
+screen, a channel opens at the first unread message so you read in order.
+Below 64 columns, the conversation gets the whole width (`Ctrl+B` brings the
+sidebar back).
+
 The composer is home. Every jump takes you somewhere and puts you straight
 back in the composer, so the usual loop is: read, `Alt+A` to the next
 conversation, type, `Enter`.
@@ -122,11 +136,18 @@ into emoji. Code spans are left untouched. Drafts are kept per channel, even
 across restarts. The prompt always shows what `Enter` will do: `❯` send,
 `↪ Alice ❯` reply, `✎ edit ❯`, `☺ react ❯` or `cmd ❯`.
 
+**Jump labels.** Any message on screen is two keys away. `Alt+R` labels the
+visible messages with home-row letters (the nearest gets `a`), and typing a
+letter replies to that message. `Alt+E` reacts, `Alt+O` opens a link, `Alt+Y`
+copies, and `f` selects one in message mode. If only one message qualifies,
+it acts immediately.
+
 **Reading**
 
 | Key | Action |
 | --- | --- |
 | `PgUp` / `PgDn`, mouse wheel | Scroll. The view holds still while new messages arrive and counts them |
+| `Ctrl+F` | Find in the channel: matches are highlighted, `↑↓` steps, `Enter` acts on one |
 | `Alt+U` | Scroll to the first unread message |
 | `Alt+N` / `Alt+P` | Next / previous message that mentions you |
 | `Alt+<` / `Alt+>` | Oldest / newest |

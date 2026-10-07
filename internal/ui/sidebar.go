@@ -10,8 +10,8 @@ import (
 	"github.com/rivo/tview"
 )
 
-// maxSidebarDMs bounds the DM list; older DMs stay reachable via Ctrl+K.
-const maxSidebarDMs = 12
+// maxSidebarDMs bounds the unread DM list; the rest stay reachable via Ctrl+K.
+const maxSidebarDMs = 15
 
 type sideKind int
 
@@ -42,26 +42,28 @@ func (r sideRow) selectable() bool {
 // where you are. Servers fold so a hundred of them stay scannable.
 type sidebar struct {
 	*tview.Box
-	a        *App
-	rows     []sideRow
-	cursor   int
-	offset   int
-	expanded map[Snowflake]bool
+	a         *App
+	rows      []sideRow
+	cursor    int
+	offset    int
+	collapsed map[Snowflake]bool // servers are expanded unless folded
 }
 
 func newSidebar(a *App) *sidebar {
-	return &sidebar{Box: tview.NewBox(), a: a, expanded: map[Snowflake]bool{}}
+	return &sidebar{Box: tview.NewBox(), a: a, collapsed: map[Snowflake]bool{}}
 }
 
-func (s *sidebar) restoreExpanded(ids []Snowflake) {
+func (s *sidebar) expanded(guild Snowflake) bool { return !s.collapsed[guild] }
+
+func (s *sidebar) restoreCollapsed(ids []Snowflake) {
 	for _, id := range ids {
-		s.expanded[id] = true
+		s.collapsed[id] = true
 	}
 }
 
-func (s *sidebar) expandedIDs() []Snowflake {
+func (s *sidebar) collapsedIDs() []Snowflake {
 	var out []Snowflake
-	for id, ok := range s.expanded {
+	for id, ok := range s.collapsed {
 		if ok {
 			out = append(out, id)
 		}
@@ -77,22 +79,23 @@ func (s *sidebar) refresh() {
 	}
 	var rows []sideRow
 
-	dms := a.st.PrivateChannels()
+	// Direct messages list only conversations with something new, plus the
+	// one that's open: an inbox, not an archive. Every other DM is a
+	// Ctrl+K away.
 	rows = append(rows, sideRow{kind: sideHeader, text: "DIRECT MESSAGES"})
 	shown := 0
-	for _, c := range dms {
-		// Always list the open DM and DMs waiting on you, even old ones.
-		if shown >= maxSidebarDMs && c.ID != a.current && !c.Unread && c.Mentions == 0 {
+	for _, c := range a.st.PrivateChannels() {
+		if !c.Unread && c.Mentions == 0 && c.ID != a.current {
+			continue
+		}
+		if shown == maxSidebarDMs && c.ID != a.current {
 			continue
 		}
 		rows = append(rows, sideRow{kind: sideDM, id: c.ID, ch: c})
 		shown++
 	}
-	if hidden := len(dms) - shown; hidden > 0 {
-		rows = append(rows, sideRow{kind: sideMore, text: fmt.Sprintf("%d more", hidden)})
-	}
-	if len(dms) == 0 {
-		rows = append(rows, sideRow{kind: sideMore, text: "no conversations yet"})
+	if shown == 0 {
+		rows = append(rows, sideRow{kind: sideMore, text: "no new messages"})
 	}
 
 	guilds := a.st.Guilds()
@@ -101,7 +104,7 @@ func (s *sidebar) refresh() {
 	}
 	for _, g := range guilds {
 		rows = append(rows, sideRow{kind: sideGuild, id: g.ID, guild: g})
-		if !s.expanded[g.ID] {
+		if !s.expanded(g.ID) {
 			continue
 		}
 		cat := "\x00"
@@ -141,7 +144,7 @@ func (s *sidebar) firstSelectable(from, dir int) int {
 // reveal expands the server of a channel and moves the cursor onto it.
 func (s *sidebar) reveal(id Snowflake) {
 	if ch, ok := s.a.st.Channel(id); ok && ch.GuildID != 0 {
-		s.expanded[ch.GuildID] = true
+		delete(s.collapsed, ch.GuildID)
 	}
 	s.refresh()
 	for i, r := range s.rows {
@@ -180,7 +183,7 @@ func (s *sidebar) activate(i int) {
 	r := s.rows[i]
 	switch r.kind {
 	case sideGuild:
-		s.expanded[r.id] = !s.expanded[r.id]
+		s.collapsed[r.id] = !s.collapsed[r.id]
 		s.refresh()
 		s.cursor = i
 	case sideChannel, sideDM:
@@ -222,7 +225,7 @@ func (s *sidebar) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
 		case tcell.KeyEnd:
 			s.cursor = s.firstSelectable(len(s.rows)-1, -1)
 		case tcell.KeyEnter, tcell.KeyRight:
-			if r := s.rows[s.cursor]; r.kind == sideGuild && s.expanded[r.id] && ev.Key() == tcell.KeyRight {
+			if r := s.rows[s.cursor]; r.kind == sideGuild && s.expanded(r.id) && ev.Key() == tcell.KeyRight {
 				s.move(1)
 				return
 			}
@@ -245,6 +248,8 @@ func (s *sidebar) InputHandler() func(*tcell.EventKey, func(tview.Primitive)) {
 				s.cursor = s.firstSelectable(0, 1)
 			case 'G':
 				s.cursor = s.firstSelectable(len(s.rows)-1, -1)
+			case '?':
+				s.a.showHelp()
 			default:
 				// Type to search: any other letter opens the switcher.
 				s.a.openSwitcher(string(r))
@@ -260,8 +265,8 @@ func (s *sidebar) foldUp() {
 	}
 	r := s.rows[s.cursor]
 	if r.kind == sideGuild {
-		if s.expanded[r.id] {
-			s.expanded[r.id] = false
+		if s.expanded(r.id) {
+			s.collapsed[r.id] = true
 			s.refresh()
 			s.cursor = slicesIndex(s.rows, r.id, sideGuild)
 		}
@@ -380,8 +385,8 @@ func (s *sidebar) drawRow(scr tcell.Screen, x, y, cw int, r sideRow, bg tcell.St
 	var badge line
 	unread, mentions, muted := r.ch.Unread, r.ch.Mentions, r.ch.Muted
 	if r.kind == sideGuild {
-		unread, mentions, muted = r.guild.Unread && !s.expanded[r.id], r.guild.Mentions, r.guild.Muted
-		if s.expanded[r.id] {
+		unread, mentions, muted = r.guild.Unread && !s.expanded(r.id), r.guild.Mentions, r.guild.Muted
+		if s.expanded(r.id) {
 			mentions = 0 // shown on the channels themselves
 		}
 	}
@@ -430,9 +435,7 @@ func (s *sidebar) drawRow(scr tcell.Screen, x, y, cw int, r sideRow, bg tcell.St
 	case sideSpacer:
 	case sideMore:
 		put("  "+r.text, fg(th.Muted).Italic(true))
-		if r.text != "no conversations yet" {
-			put(" · Ctrl+K", fg(th.Faint))
-		}
+		put(" · Ctrl+K", fg(th.Faint))
 	case sideDM:
 		glyph, gst := "○", fg(th.Faint)
 		if r.ch.Type == discord.ChannelGroupDM {
@@ -451,7 +454,7 @@ func (s *sidebar) drawRow(scr tcell.Screen, x, y, cw int, r sideRow, bg tcell.St
 		put(truncate(r.ch.Name, avail), nameStyle)
 	case sideGuild:
 		arrow := "▸ "
-		if s.expanded[r.id] {
+		if s.expanded(r.id) {
 			arrow = "▾ "
 		}
 		put(arrow, fg(th.Muted))

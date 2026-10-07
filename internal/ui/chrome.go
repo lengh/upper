@@ -204,6 +204,9 @@ func (s *statusBar) context() line {
 	if a.confirm != nil {
 		return line{{text: a.confirm.question + " ", style: bar.Foreground(th.Warn).Bold(true)}, key("y"), txt(" yes · any key cancels")}
 	}
+	if a.view.hint != nil {
+		return a.view.hintStatus()
+	}
 	if a.flashMsg != "" && time.Now().Before(a.flashUntil) {
 		st := bar.Foreground(th.BarText)
 		prefix := ""
@@ -232,13 +235,16 @@ func (s *statusBar) context() line {
 		}
 		return l
 	}
+	if a.mode == modeSearch {
+		return a.view.searchStatus()
+	}
 	text := a.input.GetText()
 	if u := commandUsage(text); u != "" && a.input.HasFocus() {
 		return line{txt(u)}
 	}
 	if a.view.HasFocus() {
 		return line{key("r"), txt(" reply  "), key("e"), txt(" edit  "), key("d"), txt(" delete  "),
-			key("a"), txt(" react  "), key("y"), txt(" copy  "), key("o"), txt(" open link  "), key("Esc"), txt(" back")}
+			key("a"), txt(" react  "), key("y"), txt(" copy  "), key("o"), txt(" link  "), key("f"), txt(" jump  "), key("?"), txt(" keys")}
 	}
 	if a.side.HasFocus() {
 		return line{key("↑↓"), txt(" move  "), key("Enter"), txt(" open  "), key("←→"), txt(" fold  "), key("type"), txt(" to search  "), key("Esc"), txt(" back")}
@@ -298,6 +304,8 @@ func (p *promptView) compute() line {
 	switch {
 	case a.mode == modeEdit:
 		return line{sp(" ✎ edit ", th.fg(th.Warn).Bold(true)), sp("❯ ", th.fg(th.Warn))}
+	case a.mode == modeSearch:
+		return line{sp(" find ", th.fg(th.Link).Bold(true)), sp("❯ ", th.fg(th.Link))}
 	case a.mode == modeReact:
 		return line{sp(" ☺ react ", th.accent().Bold(true)), sp("❯ ", th.accent())}
 	case a.mode == modeReply && a.target != nil:

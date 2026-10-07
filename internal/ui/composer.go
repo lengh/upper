@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/lengh/upper/internal/config"
 	"github.com/lengh/upper/internal/discord"
 	"github.com/lengh/upper/internal/state"
+	"github.com/lengh/upper/internal/update"
 )
 
 // maxMessageLen is Discord's limit for accounts without Nitro. Longer input
@@ -27,6 +29,7 @@ const (
 	modeReply
 	modeEdit
 	modeReact
+	modeSearch
 )
 
 type sendJob struct {
@@ -42,6 +45,25 @@ func runeLen(s string) int { return utf8.RuneCountInString(s) }
 
 func (a *App) onComposerKey(ev *tcell.EventKey) *tcell.EventKey {
 	text := a.input.GetText()
+	if a.mode == modeSearch {
+		switch ev.Key() {
+		case tcell.KeyUp, tcell.KeyCtrlP:
+			a.view.stepMatch(-1)
+			return nil
+		case tcell.KeyDown, tcell.KeyCtrlN:
+			a.view.stepMatch(1)
+			return nil
+		case tcell.KeyEnter:
+			a.endSearch(true)
+			return nil
+		case tcell.KeyEscape, tcell.KeyCtrlF:
+			a.endSearch(false)
+			return nil
+		case tcell.KeyCtrlJ, tcell.KeyTab:
+			return nil
+		}
+		return ev
+	}
 	switch ev.Key() {
 	case tcell.KeyCtrlJ:
 		// Ctrl+J is a newline everywhere; Alt+Enter is taken by Windows
@@ -111,6 +133,10 @@ func (a *App) onComposerChanged() {
 		a.comp = nil
 	}
 	a.updatePlaceholder()
+	if a.mode == modeSearch {
+		a.view.setQuery(a.input.GetText())
+		return
+	}
 	if !a.cfg.SendTyping || a.current == 0 || a.mode == modeEdit || a.mode == modeReact {
 		return
 	}
@@ -130,6 +156,8 @@ func (a *App) onComposerChanged() {
 func (a *App) updatePlaceholder() {
 	ph := ""
 	switch {
+	case a.mode == modeSearch:
+		ph = "text or a name · ↑↓ step through matches"
 	case a.mode == modeReact:
 		ph = "an emoji like :thumbsup: or 👍 · Tab completes · Esc cancels"
 	case a.mode == modeEdit:
@@ -189,6 +217,9 @@ func (a *App) startReact(m discord.Message) {
 // their text; a reply keeps what you typed as a normal message draft.
 func (a *App) resetCompose() {
 	switch a.mode {
+	case modeSearch:
+		a.view.query, a.view.matches = "", nil
+		fallthrough
 	case modeEdit, modeReact:
 		a.input.SetText(a.drafts[a.current], true)
 		delete(a.drafts, a.current)
@@ -719,6 +750,7 @@ func init() {
 		}},
 		{"/sidebar", "", "show or hide the sidebar (Ctrl+B)", func(a *App, _ string) { a.toggleSidebar() }},
 		{"/help", "", "every key and command (F1)", func(a *App, _ string) { a.showHelp() }},
+		{"/update", "", "install the newest version now", func(a *App, _ string) { a.updateNow() }},
 		{"/logout", "", "forget your token and quit", func(a *App, _ string) {
 			a.ask("Log out and forget the stored token?", func() {
 				if err := config.DeleteToken(); err != nil {
@@ -847,4 +879,36 @@ func (a *App) openLink(m discord.Message) {
 		msg += fmt.Sprintf(" (first of %d links)", len(ls))
 	}
 	a.flashAt(levelOK, msg)
+}
+
+// Version is the running build, set by main.
+var Version = "dev"
+
+func (a *App) updateNow() {
+	if !update.Enabled(Version) {
+		a.flash("this build was made from source and doesn't update itself")
+		return
+	}
+	a.flash("checking for updates…")
+	go func() {
+		ctx, cancel := context.WithTimeout(a.ctx, 2*time.Minute)
+		defer cancel()
+		latest, err := update.Latest(ctx)
+		if err == nil && latest != Version {
+			var exe string
+			if exe, err = os.Executable(); err == nil {
+				err = update.Apply(ctx, exe)
+			}
+		}
+		a.tv.QueueUpdateDraw(func() {
+			switch {
+			case err != nil:
+				a.flashErr(err)
+			case latest == Version:
+				a.flashAt(levelOK, "you're on the newest version ("+Version+")")
+			default:
+				a.flashAt(levelOK, "updated to "+latest+" · restart upper to use it")
+			}
+		})
+	}()
 }
